@@ -1,26 +1,252 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Design tokens — docs/01-design-system.md §1.
+ * Light and Dark differ ONLY in these variables. Components use the Tailwind
+ * aliases below (bg-surface, text-muted, border-border …), never raw hex.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root,
+.light {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --surface-2: #f6f7f9;
+  --border: #e4e7ec;
+  --text: #1e2431;
+  --text-muted: #6b7588;
+  --brand-from: #f94471;
+  --brand-to: #fe824c;
+  --brand: #f25c54;
+  --brand-soft: #fff0ee;
+  --success: #12a37a;
+  --success-soft: #e6f6f0;
+  --danger: #e5484d;
+  --warning-soft: #fff4e8;
+  --overlay-chip: rgba(17, 24, 39, 0.72);
+  /* addition: modal backdrop */
+  --scrim: rgba(13, 19, 27, 0.55);
+
+  /*
+   * Text-on-light variants (addition, see reports/stage-1.md §Accessibility):
+   * --brand / --success / --danger are below 4.5:1 as small text on light
+   * surfaces, so small text uses these darker shades. In Dark they equal the
+   * base tokens.
+   */
+  --brand-text: #c8372f;
+  --success-text: #0b7a5a;
+  --danger-text: #c4363b;
+  --warning-text: #b54708;
+
+  --brand-gradient: linear-gradient(100deg, var(--brand-from), var(--brand-to));
+  --shadow-card: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 16px rgba(16, 24, 40, 0.04);
+  --shadow-pop: 0 2px 6px rgba(16, 24, 40, 0.06), 0 12px 32px rgba(16, 24, 40, 0.1);
+  --header-h: 72px;
+  color-scheme: light;
+}
+
+.dark {
+  --bg: #0d131b;
+  --surface: #18212b;
+  --surface-2: #1f2933;
+  --border: #2a3440;
+  --text: #eff3f9;
+  --text-muted: #a3adbb;
+  --brand: #ff6b63;
+  --brand-soft: #34282f;
+  --success: #3fcf9f;
+  --success-soft: #173229;
+  --danger: #ff6369;
+  --warning-soft: #33281c;
+
+  --brand-text: var(--brand);
+  --success-text: var(--success);
+  --danger-text: var(--danger);
+  --warning-text: #f5b266;
+
+  /* §3: no shadows in Dark, borders only. */
+  --shadow-card: none;
+  --shadow-pop: 0 0 0 1px var(--border);
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--text-muted);
+  --color-brand: var(--brand);
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-text: var(--brand-text);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-text: var(--success-text);
+  --color-danger: var(--danger);
+  --color-danger-text: var(--danger-text);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-text: var(--warning-text);
+  --color-overlay-chip: var(--overlay-chip);
+  --color-scrim: var(--scrim);
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --radius-tile: 12px;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-pop: var(--shadow-pop);
+
+  --ease-panel: cubic-bezier(0.22, 0.8, 0.25, 1);
+
+  --breakpoint-tablet: 768px;
+  --breakpoint-desktop: 1200px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Typography scale — §2 */
+@utility text-display {
+  font-size: 36px;
+  line-height: 40px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  @media (width >= 768px) {
+    font-size: 56px;
+    line-height: 60px;
+  }
+}
+@utility text-h1 {
+  font-size: 36px;
+  line-height: 42px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+@utility text-h2 {
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+}
+@utility text-h3 {
+  font-size: 22px;
+  line-height: 28px;
+  font-weight: 700;
+}
+@utility text-body {
+  font-size: 15px;
+  line-height: 24px;
+  font-weight: 400;
+}
+@utility text-small {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+@utility text-overline {
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+@utility text-button {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+
+@utility bg-brand-gradient {
+  background-image: var(--brand-gradient);
+}
+@utility text-brand-gradient {
+  background-image: var(--brand-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+}
+
+@utility container-page {
+  width: 100%;
+  max-width: calc(1200px + 2 * 24px);
+  margin-inline: auto;
+  padding-inline: 16px;
+  @media (width >= 768px) {
+    padding-inline: 24px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: calc(var(--header-h) + 16px);
+  }
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 24px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+  /* §3: visible focus on every interactive element. */
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--brand) 25%, transparent);
+  }
+}
+
+/*
+ * Theme switch: 180 ms colour-only transition (§5). The class is added for a
+ * moment by the theme toggle, so normal hovers keep their own timing and
+ * images never animate.
+ */
+html.theme-transition,
+html.theme-transition *:not(img):not(picture):not(video) {
+  transition-property: background-color, border-color, color, fill, stroke !important;
+  transition-duration: 180ms !important;
+  transition-timing-function: ease-out !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Soft shimmer for skeletons (no fake progress, stops under reduced motion). */
+@keyframes shimmer {
+  from {
+    background-position: -200% 0;
+  }
+  to {
+    background-position: 200% 0;
+  }
+}
+@utility skeleton {
+  background-color: var(--surface-2);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--surface) 70%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
 }

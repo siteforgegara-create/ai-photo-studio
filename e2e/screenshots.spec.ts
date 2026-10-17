@@ -24,6 +24,7 @@ type Shot = {
 };
 
 const BASE_WIDTHS = [1440, 390];
+const STUDIO_WIDTHS = [1440, 1024, 768, 390];
 
 const wizardBase = { step: 0, selfies: [], consent: true, outfit: null, glasses: "keep", previewStyles: [], pack: "professional", styles: [], previewSkipped: false };
 
@@ -131,8 +132,68 @@ const shots: Shot[] = [
       await page.getByRole("dialog").waitFor();
     },
   },
-  { name: "studio-guest", path: "/studio", widths: [1440, 1024, 390] },
-  { name: "studio-signed-in", path: "/studio", scenario: "has-shoot", widths: [1440, 1024, 390] },
+  // Studio — 02-studio.md; widths 1440 / 1024 / 768 / 390 (Stage 3 acceptance).
+  { name: "studio-demo-guest", path: "/studio", widths: STUDIO_WIDTHS, fullPage: false },
+  { name: "studio-real", path: "/studio?photo=shoot_pro_1017_p001", scenario: "has-shoot", widths: STUDIO_WIDTHS, fullPage: false },
+  {
+    name: "studio-real-edits",
+    path: "/studio?photo=shoot_pro_1017_p001",
+    scenario: "has-shoot",
+    widths: [1440, 1024],
+    fullPage: false,
+    act: async (page, width) => {
+      if (width < 1200) await page.getByRole("button", { name: /Options & photos/ }).click();
+      await page.getByRole("tab", { name: "Edits" }).click();
+      await page.getByRole("button", { name: /Edit 2/ }).click();
+      if (width < 1200) await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: "studio-collapsed",
+    path: "/studio?photo=shoot_pro_1017_p001",
+    scenario: "has-shoot",
+    widths: [1440],
+    fullPage: false,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Collapse panel" }).click();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: "studio-crop-export",
+    path: "/studio?photo=shoot_pro_1017_p001",
+    scenario: "has-shoot",
+    widths: STUDIO_WIDTHS,
+    fullPage: false,
+    act: async (page, width) => {
+      await page.getByRole(width < 768 ? "button" : "button", { name: /Crop & Export/ }).first().click();
+      await page.getByRole("img", { name: "Photo being edited" }).waitFor();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: "studio-confirm",
+    path: "/studio?photo=shoot_pro_1017_p001",
+    scenario: "has-shoot",
+    widths: [1440, 390],
+    fullPage: false,
+    act: async (page) => {
+      await page.getByRole("button", { name: /Generate · 2 credits/ }).click();
+      await page.getByRole("dialog").waitFor();
+    },
+  },
+  {
+    name: "studio-mobile-sheet",
+    path: "/studio",
+    widths: [390],
+    fullPage: false,
+    act: async (page) => {
+      await page.getByRole("button", { name: "Options", exact: true }).click();
+      await page.getByRole("dialog").waitFor();
+      await page.waitForTimeout(400);
+    },
+  },
   { name: "not-found", path: "/this-page-does-not-exist" },
   { name: "dev-ui", path: "/dev/ui" },
 ];

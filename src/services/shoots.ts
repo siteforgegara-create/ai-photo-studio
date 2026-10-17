@@ -12,7 +12,7 @@ import type {
   Unsubscribe,
 } from "./types";
 
-export type DownloadFormat = "original" | "linkedin" | "resume" | "avatar" | "website" | "zip";
+export type DownloadFormat = "original" | "linkedin" | "resume" | "avatar" | "website" | "zip" | "edited";
 
 export type DraftInput = { outfit?: OutfitChoice; glasses?: GlassesChoice; styleIds?: string[]; pack?: PackId };
 

@@ -7,7 +7,7 @@ import path from "node:path";
  * so demo mode structurally cannot reach generation.
  */
 describe("demo isolation", () => {
-  const files = ["src/config/demo-manifest.ts", "src/components/before-after/before-after.tsx"];
+  const files = ["src/config/demo-manifest.ts", "src/components/before-after/before-after.tsx", "src/features/studio/demo.ts"];
   it.each(files)("%s does not import generation services", (file) => {
     const src = readFileSync(path.resolve(file), "utf8");
     expect(src).not.toMatch(/editsService|shootsService|services\/edits|services\/shoots|@\/services["']/);

@@ -18,8 +18,11 @@ export type BeforeAfterProps = {
   split?: number;
   defaultSplit?: number;
   onSplitChange?: (split: number) => void;
-  /** Zoom 0.5–3 applied to both layers in sync (pan arrives with Studio, Stage 3). */
+  /** Zoom 0.5–3 applied to both layers in sync. */
   zoom?: number;
+  /** Pan offset in % of the frame (−50…50), applied to both layers in sync. Only used when zoom > 1. */
+  pan?: { x: number; y: number };
+  onPanChange?: (pan: { x: number; y: number }) => void;
   /** Chip in the top-left corner under the labels, e.g. `Example`. */
   badge?: React.ReactNode;
   /** Caption at the bottom (slider: `Drag to compare`). */
@@ -55,6 +58,8 @@ function SliderBeforeAfter({
   defaultSplit = 50,
   onSplitChange,
   zoom = 1,
+  pan = { x: 0, y: 0 },
+  onPanChange,
   badge,
   caption = "Drag to compare",
   showLabels = true,
@@ -66,7 +71,8 @@ function SliderBeforeAfter({
   const [internal, setInternal] = React.useState(defaultSplit);
   const split = controlled ?? internal;
   const areaRef = React.useRef<HTMLDivElement>(null);
-  const dragging = React.useRef(false);
+  const drag = React.useRef<null | { mode: "split" } | { mode: "pan"; x: number; y: number; start: { x: number; y: number } }>(null);
+  const zoomed = zoom > 1.001;
 
   const setSplit = React.useCallback(
     (v: number) => {
@@ -98,7 +104,37 @@ function SliderBeforeAfter({
     }
   };
 
-  const layerStyle: React.CSSProperties = zoom !== 1 ? { transform: `scale(${zoom})`, transformOrigin: "center" } : {};
+  // Both layers share one transform; the clip lives on an unscaled wrapper so the divider stays aligned.
+  const maxPan = zoomed ? ((zoom - 1) / (2 * zoom)) * 100 : 0;
+  const px = clamp(pan.x, -maxPan, maxPan);
+  const py = clamp(pan.y, -maxPan, maxPan);
+  const layerStyle: React.CSSProperties = zoom !== 1 ? { transform: `scale(${zoom}) translate(${px}%, ${py}%)`, transformOrigin: "center" } : {};
+
+  const startDrag = (e: React.PointerEvent, mode: "split" | "pan") => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (mode === "split") {
+      drag.current = { mode: "split" };
+      fromPointer(e.clientX);
+    } else {
+      drag.current = { mode: "pan", x: e.clientX, y: e.clientY, start: { x: px, y: py } };
+    }
+  };
+  const moveDrag = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    if (d.mode === "split") return fromPointer(e.clientX);
+    const rect = areaRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Movement in screen px → % of the (scaled) layer.
+    const nx = clamp(d.start.x + ((e.clientX - d.x) / rect.width / zoom) * 100, -maxPan, maxPan);
+    const ny = clamp(d.start.y + ((e.clientY - d.y) / rect.height / zoom) * 100, -maxPan, maxPan);
+    onPanChange?.({ x: nx, y: ny });
+  };
+  const endDrag = () => {
+    drag.current = null;
+  };
 
   return (
     <figure
@@ -107,22 +143,22 @@ function SliderBeforeAfter({
     >
       <div
         ref={areaRef}
-        className="absolute inset-0 cursor-ew-resize touch-pan-y"
-        onPointerDown={(e) => {
-          if (e.button !== 0) return;
-          dragging.current = true;
-          (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-          fromPointer(e.clientX);
-        }}
-        onPointerMove={(e) => dragging.current && fromPointer(e.clientX)}
-        onPointerUp={() => (dragging.current = false)}
-        onPointerCancel={() => (dragging.current = false)}
+        data-zoomed={zoomed || undefined}
+        className={cn("absolute inset-0", zoomed ? "cursor-grab touch-none active:cursor-grabbing" : "cursor-ew-resize touch-pan-y")}
+        onPointerDown={(e) => startDrag(e, zoomed ? "pan" : "split")}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
-        <div className="absolute inset-0" style={layerStyle}>
-          <Image src={before} alt="" fill sizes={sizes} priority={priority} className="object-cover" draggable={false} />
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute inset-0" style={layerStyle} data-layer="before">
+            <Image src={before} alt="" fill sizes={sizes} priority={priority} className="object-cover" draggable={false} />
+          </div>
         </div>
-        <div className="absolute inset-0" style={{ ...layerStyle, clipPath: `inset(0 0 0 ${split}%)` }}>
-          <Image src={after} alt="" fill sizes={sizes} priority={priority} className="object-cover" draggable={false} />
+        <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 0 0 ${split}%)` }}>
+          <div className="absolute inset-0" style={layerStyle} data-layer="after">
+            <Image src={after} alt="" fill sizes={sizes} priority={priority} className="object-cover" draggable={false} />
+          </div>
         </div>
 
         <div className="pointer-events-none absolute inset-y-0 w-0.5 -translate-x-1/2 bg-white/90 shadow-[0_0_0_1px_rgba(0,0,0,.08)]" style={{ left: `${split}%` }} aria-hidden="true" />
@@ -135,7 +171,11 @@ function SliderBeforeAfter({
           aria-valuenow={Math.round(split)}
           aria-valuetext={`${Math.round(split)}% ${beforeLabel.toLowerCase()}`}
           onKeyDown={onKeyDown}
-          className="absolute top-1/2 flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-overlay-chip text-white shadow-lg backdrop-blur-sm"
+          onPointerDown={(e) => startDrag(e, "split")}
+          onPointerMove={moveDrag}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          className="absolute top-1/2 cursor-ew-resize touch-none flex size-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-2 border-white bg-overlay-chip text-white shadow-lg backdrop-blur-sm"
           style={{ left: `${split}%` }}
         >
           <ChevronLeft className="-mr-1 size-4" aria-hidden="true" />

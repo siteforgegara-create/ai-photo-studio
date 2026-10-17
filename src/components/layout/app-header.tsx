@@ -43,14 +43,15 @@ export function AppHeader({ backHref }: { backHref?: string | null }) {
           {status === "authenticated" && (
             <>
               <CreditsPill credits={credits} />
-              <Button asChild variant="secondary" className="hidden md:inline-flex">
+              {/* Below 1024 px the row does not fit: Buy credits hides (the pill links to it) and the theme moves into the account menu. */}
+              <Button asChild variant="secondary" className="hidden lg:inline-flex">
                 <Link href="/pricing#credits">Buy credits</Link>
               </Button>
-              <SegmentedThemeToggle className="hidden md:inline-flex" />
-              <span className="md:hidden">
+              <SegmentedThemeToggle className="hidden lg:inline-flex" />
+              <span className="lg:hidden">
                 <AccountMenu withTheme />
               </span>
-              <span className="hidden md:inline-flex">
+              <span className="hidden lg:inline-flex">
                 <AccountMenu />
               </span>
             </>

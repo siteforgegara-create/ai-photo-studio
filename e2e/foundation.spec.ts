@@ -28,7 +28,7 @@ const publicRoutes: [string, RegExp][] = [
   ["/forgot-password", /Forgot your password\?/],
   ["/reset-password", /Create new password/],
   ["/shoot/new", /Upload 4–8 selfies/],
-  ["/studio", /Studio/],
+  ["/studio", /Background/], // h1 = active tool (02-studio)
 ];
 
 for (const [route, heading] of publicRoutes) {

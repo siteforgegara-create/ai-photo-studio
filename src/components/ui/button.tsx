@@ -14,9 +14,9 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
-        /** Main CTA only — one per screen (01-design-system §1). */
+        /** Main CTA only — one per screen. White text → darkened --cta-gradient (V8). */
         primary:
-          "bg-brand-gradient text-white shadow-[0_6px_16px_-6px_rgba(249,68,113,.55)] hover:brightness-[1.04] disabled:opacity-35 disabled:shadow-none aria-disabled:opacity-35",
+          "bg-cta-gradient text-white shadow-[0_6px_16px_-6px_rgba(219,47,92,.5)] hover:brightness-[1.06] disabled:opacity-35 disabled:shadow-none aria-disabled:opacity-35",
         secondary:
           "bg-surface text-text border border-border hover:bg-surface-2 hover:border-[color-mix(in_srgb,var(--border)_60%,var(--text-muted))] disabled:opacity-50",
         ghost: "text-text hover:bg-surface-2 disabled:opacity-50",

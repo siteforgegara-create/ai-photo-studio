@@ -25,7 +25,7 @@ export function Stepper({ steps, current, className }: { steps: string[]; curren
               <span
                 className={cn(
                   "flex size-7 shrink-0 items-center justify-center rounded-full text-[13px] font-bold",
-                  state === "active" && "bg-brand-gradient text-white",
+                  state === "active" && "bg-cta-gradient text-white",
                   state === "done" && "bg-success-soft text-success-text",
                   state === "todo" && "border border-border bg-surface text-muted",
                 )}

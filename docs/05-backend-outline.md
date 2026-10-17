@@ -43,7 +43,7 @@ interface SelfieCheck { faces: number; faceRatio: number; sharpness: number; bri
 interface Selfie { id: string; localId: string; previewUrl: string; check: SelfieCheck }
 interface Preview { id: string; styleId: string; url: string }   // 512px, watermark
 interface Shoot { id: string; pack: PackId; status: ShootStatus; styleIds: string[]; targetCount: number; readyCount: number;
-                  createdAt: string; expiresAt?: string; refundable: boolean; editCreditsLeft: number }
+                  createdAt: string; expiresAt?: string; refundable: boolean }   // кредиты — только баланс аккаунта (M8), у съёмки поля нет
 interface ShootPhoto { id: string; shootId: string; styleId?: string; parentId?: string; kind: 'generated'|'edit';
                        url: string; thumbUrl: string; width: number; height: number; isFavorite: boolean }
 interface EditInput { photoId: string; tool: EditToolId; optionId?: string; customText?: string; sceneUploadId?: string; variants: 1|2|4 }

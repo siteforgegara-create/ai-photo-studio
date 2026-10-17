@@ -55,6 +55,7 @@ const swatches = [
   ["brand", "bg-brand"],
   ["brand-soft", "bg-brand-soft"],
   ["brand-gradient", "bg-brand-gradient"],
+  ["cta-gradient", "bg-cta-gradient"],
   ["success", "bg-success"],
   ["success-soft", "bg-success-soft"],
   ["danger", "bg-danger"],

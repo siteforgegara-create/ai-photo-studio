@@ -72,7 +72,6 @@ export interface Shoot {
   createdAt: string;
   expiresAt?: string;
   refundable: boolean;
-  editCreditsLeft: number;
   title?: string; // ext: `Rename shoot`
   outfit?: OutfitChoice; // ext
   glasses?: GlassesChoice; // ext

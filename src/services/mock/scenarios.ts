@@ -103,7 +103,6 @@ function professionalShoot(status: Shoot["status"], readyCount: number): Shoot {
     createdAt: FIXTURE_TODAY,
     expiresAt: ready ? addDays(FIXTURE_TODAY, 30) : undefined,
     refundable: true,
-    editCreditsLeft: pack.editCredits,
     outfit: "blazer",
     glasses: "keep",
     coverUrl: STYLE_IMAGE["corporate-gray"],
@@ -123,7 +122,6 @@ function essentialShoot(): Shoot {
     createdAt,
     expiresAt: addDays(createdAt, 30),
     refundable: false,
-    editCreditsLeft: 0,
     coverUrl: STYLE_IMAGE["city-bokeh"],
   };
 }

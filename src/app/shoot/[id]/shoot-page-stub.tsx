@@ -21,6 +21,7 @@ export function ShootPageStub({ id }: { id: string }) {
 
 function Inner({ id }: { id: string }) {
   const user = useSession((s) => s.user);
+  const credits = useSession((s) => s.credits);
   const [shoot, setShoot] = React.useState<Shoot | null | undefined>(undefined);
 
   React.useEffect(() => {
@@ -58,7 +59,7 @@ function Inner({ id }: { id: string }) {
       <PageHeading
         overline="MY SHOOT"
         title={`${shoot.title ?? pack.name} · ${formatDate(shoot.createdAt)}`}
-        lead={`${pluralize(shoot.targetCount, "photo")} · ${pluralize(shoot.styleIds.length, "style")} · ${shoot.editCreditsLeft} edit credits left`}
+        lead={`${pluralize(shoot.targetCount, "photo")} · ${pluralize(shoot.styleIds.length, "style")}} · ${credits} edit credits available`}
       />
       {shoot.status === "generating" && (
         <div className="mt-6 max-w-md rounded-[16px] border border-border bg-surface p-5 shadow-card">

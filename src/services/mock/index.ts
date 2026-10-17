@@ -124,7 +124,6 @@ export const mockShoots: ShootsService = {
       readyCount: 0,
       createdAt: nowIso(),
       refundable: false,
-      editCreditsLeft: 0,
       outfit: input.outfit,
       glasses: input.glasses,
     };
@@ -204,7 +203,6 @@ export const mockShoots: ShootsService = {
         targetCount: pack.photos,
         readyCount: 0,
         refundable: true,
-        editCreditsLeft: pack.editCredits,
       } satisfies Partial<Shoot>);
       d.ledger.push({ id: newId("ledger"), createdAt: nowIso(), label: `${pack.name} shoot · edit credits`, delta: pack.editCredits });
     });

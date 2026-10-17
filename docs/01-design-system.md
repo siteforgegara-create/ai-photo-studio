@@ -24,7 +24,7 @@
 | `--warning-soft` | `#FFF4E8` | `#33281C` | `Price to be confirmed` |
 | `--overlay-chip` | `rgba(17,24,39,.72)` | `rgba(17,24,39,.72)` | плашки поверх фото (Before/After, «Pre-generated demo example») |
 
-`--brand-gradient: linear-gradient(100deg, var(--brand-from), var(--brand-to))` — только для **главного CTA** на экране (Generate, Sign In, Select Creator Pack, Save changes, Buy Credits) и акцента в заголовке Pricing («Pay your way.»). Disabled-состояние основного CTA: тот же градиент с `opacity .35`, текст белый, курсор `not-allowed`.
+`--cta-gradient: linear-gradient(100deg, #DB2F5C, #CF4A26)` — фон **кнопок с белым текстом** (контраст ≥ 4.5:1, решение V8); hover — на 6% светлее. `--brand-gradient: linear-gradient(100deg, var(--brand-from), var(--brand-to))` — яркий, **только декор без текста** (полоса тарифа, градиентное слово, логотип, ручка слайдера). Главный CTA на экране (Generate, Sign In, Select Creator Pack, Save changes, Buy Credits) и акцента в заголовке Pricing («Pay your way.»). Disabled-состояние основного CTA: тот же градиент с `opacity .35`, текст белый, курсор `not-allowed`.
 
 ## 2. Типографика (Inter)
 

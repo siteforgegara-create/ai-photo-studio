@@ -39,7 +39,7 @@ Studio дорабатывает **один кадр** из съёмки: мен�
 ### 1.1 Левая колонка — инструменты правки
 Overline `EDIT TOOLS`, пункты: иконка + название + цена справа мелким шрифтом (`1 cr`, `2 cr`, `Free`). Активный — `--brand-soft`.
 
-Внизу карточка кредитов: `30 edit credits` · `Included with your Professional shoot` · ссылка `Buy more`. У гостя — `Edits are included with every shoot.` + `See pricing`.
+Внизу карточка кредитов: `30 edit credits available` (общий баланс аккаунта, M8) · `Credits never expire` · ссылка `Buy more`. У гостя — `Edits are included with every shoot.` + `See pricing`.
 
 ### 1.2 Центр
 1. Заголовок: название инструмента + подзаголовок; справа — галочка демо (если положена).

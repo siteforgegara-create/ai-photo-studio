@@ -82,7 +82,7 @@
 Только для владельца; чужой id → 404.
 
 **Шапка страницы**
-- Overline `MY SHOOT`, H1 `Professional · Oct 17, 2026` (имя тарифа и дата), строка `50 photos · 5 styles · 30 edit credits left`.
+- Overline `MY SHOOT`, H1 `Professional · Oct 17, 2026` (имя тарифа и дата), строка `50 photos · 5 styles` + справа от неё `30 edit credits available` (баланс аккаунта).
 - Справа: `Download all (ZIP)` (secondary), меню `⋯` (`Delete now`, `Rename shoot`).
 - Плашка-срок: `Photos are stored until Nov 16, 2026. Download your favorites before then.`
 - Если идёт генерация — баннер `Generating… 18 of 50 ready` и плейсхолдеры в сетке.

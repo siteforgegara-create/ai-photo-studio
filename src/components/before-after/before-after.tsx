@@ -175,7 +175,7 @@ function DiagonalBeforeAfter({ before, after, alt, beforeLabel = "Before", after
         <ArrowRight className="size-6" />
       </span>
       <Chip className="top-4 left-4">{beforeLabel}</Chip>
-      <span className="absolute top-4 right-4 rounded-full bg-brand-gradient px-3.5 py-1.5 text-[13px] leading-[18px] font-semibold text-white shadow">{afterLabel}</span>
+      <span className="absolute top-4 right-4 rounded-full bg-cta-gradient px-3.5 py-1.5 text-[13px] leading-[18px] font-semibold text-white shadow">{afterLabel}</span>
       {badge && <div className="absolute top-16 left-4">{badge}</div>}
       {caption && (
         <div className="absolute inset-x-4 bottom-4 rounded-[10px] bg-overlay-chip px-4 py-2.5 text-center text-[13px] leading-[18px] font-medium text-white backdrop-blur-sm">{caption}</div>

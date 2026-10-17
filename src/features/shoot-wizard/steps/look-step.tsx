@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { StylePlaceholder } from "@/components/marketing/style-placeholder";
 import { ArrowLeft, ArrowRight, Briefcase, Shirt, Sparkles, UserRound, Wand2 } from "lucide-react";
 import { PREVIEW_STYLE_COUNT, shootStyles } from "@/config/styles";
 import type { GlassesChoice, OutfitChoice } from "@/services/types";
@@ -109,12 +110,7 @@ export function LookStep({ previewUsed, busy, onBack, onContinue }: { previewUse
                       <span className="rounded-[6px] bg-overlay-chip px-1.5 py-0.5 text-[10px] font-semibold text-white">Example</span>
                     ) : undefined
                   }
-                  placeholder={
-                    <>
-                      <span className="font-semibold text-text">{s.name}</span>
-                      <span>Example coming soon</span>
-                    </>
-                  }
+                  placeholder={<StylePlaceholder style={s} />}
                 />
               );
             })}

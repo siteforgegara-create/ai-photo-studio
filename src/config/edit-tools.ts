@@ -9,6 +9,8 @@ export type EditOption = {
   name: string;
   /** Background → Brand → Solid color shows a colour picker. */
   kind?: "color";
+  /** Plain backdrops: CSS background shown as the tile itself until a demo image exists. */
+  swatch?: string;
 };
 
 export type EditCategory = {
@@ -48,7 +50,12 @@ export const editTools: readonly EditTool[] = [
     pricePerVariant: editCostPerVariant.background,
     creative: false,
     categories: [
-      { id: "studio", name: "Studio", options: [opt("studio-white", "White"), opt("studio-light-gray", "Light Gray"), opt("studio-charcoal", "Charcoal"), opt("studio-gradient", "Gradient")] },
+      { id: "studio", name: "Studio", options: [
+          opt("studio-white", "White", { swatch: "#ffffff" }),
+          opt("studio-light-gray", "Light Gray", { swatch: "#d9dce1" }),
+          opt("studio-charcoal", "Charcoal", { swatch: "#3b4049" }),
+          opt("studio-gradient", "Gradient", { swatch: "radial-gradient(120% 90% at 50% 30%, #f1f3f6 0%, #c3c8d0 60%, #8f96a1 100%)" }),
+        ], },
       { id: "office", name: "Office", options: [opt("modern-office", "Modern Office"), opt("glass-meeting-room", "Glass Meeting Room"), opt("library", "Library")] },
       { id: "outdoor", name: "Outdoor", options: [opt("city-bokeh", "City Bokeh"), opt("park", "Park"), opt("golden-hour", "Golden Hour")] },
       { id: "brand", name: "Brand", options: [opt("solid-color", "Solid color", { kind: "color" })] },

@@ -63,13 +63,15 @@ export function OptionsPanel({ demo, chips }: { demo: boolean; chips?: React.Rea
               sizes="140px"
               badge={tool.creative ? <span className="rounded-full bg-overlay-chip px-2 py-0.5 text-[11px] font-bold text-white">{tool.pricePerVariant} cr</span> : undefined}
               placeholder={
-                isColor ? (
-                  <span className="size-14 rounded-full border border-border shadow-inner" style={{ background: custom.color ?? "#1f4e79" }} aria-hidden="true" />
+                // The name is already in the caption: a colour swatch for plain backdrops, otherwise just the tool icon.
+                isColor || o.swatch ? (
+                  <span
+                    className="absolute inset-0 shadow-[inset_0_0_0_1px_var(--border)]"
+                    style={{ background: isColor ? (custom.color ?? "#1f4e79") : o.swatch }}
+                    aria-hidden="true"
+                  />
                 ) : (
-                  <>
-                    <tool.icon className="size-7 text-muted" aria-hidden="true" />
-                    <span className="font-semibold text-text">{o.name}</span>
-                  </>
+                  <tool.icon className="size-8 text-muted" aria-hidden="true" />
                 )
               }
             />
@@ -84,10 +86,9 @@ export function OptionsPanel({ demo, chips }: { demo: boolean; chips?: React.Rea
             onClick={() => setOption(CUSTOM_OPTION)}
             badge={tool.creative ? <span className="rounded-full bg-overlay-chip px-2 py-0.5 text-[11px] font-bold text-white">{tool.pricePerVariant} cr</span> : undefined}
             placeholder={
-              <>
-                <span className="flex size-10 items-center justify-center rounded-full border-2 border-dashed border-border text-[20px] text-muted">+</span>
-                <span className="font-semibold text-text">Custom</span>
-              </>
+              <span className="flex size-10 items-center justify-center rounded-full border-2 border-dashed border-border text-[20px] text-muted" aria-hidden="true">
+                +
+              </span>
             }
           />
         )}

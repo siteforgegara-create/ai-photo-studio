@@ -64,7 +64,7 @@ export default function PhotoEditorPage() {
 
       <Section aria-labelledby="faq-title" className="pt-0 md:pt-0">
         <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
-          <SectionHeading id="faq-title" overline="FAQ" title="Questions about the photo editor" />
+          <SectionHeading className="self-start lg:sticky lg:top-[calc(var(--header-h)+24px)] md:items-start" id="faq-title" overline="FAQ" title="Questions about the photo editor" />
           <FaqList items={faq} jsonLd />
         </div>
       </Section>

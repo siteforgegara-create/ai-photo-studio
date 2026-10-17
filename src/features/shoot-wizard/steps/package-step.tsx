@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { StylePlaceholder } from "@/components/marketing/style-placeholder";
 import { ArrowLeft, ArrowRight, Check, ShieldCheck } from "lucide-react";
 import { getShootPack, shootPacks } from "@/config/packs";
 import { getStyle, shootStyles } from "@/config/styles";
@@ -124,12 +125,7 @@ export function PackageStep({ busy, error, onBack, onCheckout }: { busy: boolean
                       className={cn(full && "opacity-60")}
                       onClick={() => toggleStyle(s.id)}
                       sizes="(min-width: 1024px) 180px, 45vw"
-                      placeholder={
-                        <>
-                          <span className="font-semibold text-text">{s.name}</span>
-                          <span>Example coming soon</span>
-                        </>
-                      }
+                      placeholder={<StylePlaceholder style={s} />}
                     />
                   );
                 })}

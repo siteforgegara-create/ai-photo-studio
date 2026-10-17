@@ -184,7 +184,7 @@ export default function PricingPage() {
       {/* Mini FAQ */}
       <Section aria-labelledby="pricing-faq-title">
         <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
-          <SectionHeading id="pricing-faq-title" overline="FAQ" title="Payments and refunds" />
+          <SectionHeading className="self-start lg:sticky lg:top-[calc(var(--header-h)+24px)] md:items-start" id="pricing-faq-title" overline="FAQ" title="Payments and refunds" />
           <FaqList items={faq} jsonLd />
         </div>
       </Section>

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { StylePlaceholder } from "@/components/marketing/style-placeholder";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -12,7 +13,6 @@ import {
   Palette,
   ShieldCheck,
   SlidersHorizontal,
-  Sparkles,
   Trash2,
   Wallet,
 } from "lucide-react";
@@ -132,10 +132,7 @@ export default function HomePage() {
                       <span className="absolute bottom-2 left-2 rounded-[6px] bg-overlay-chip px-2 py-0.5 text-[11px] font-semibold text-white">Example</span>
                     </>
                   ) : (
-                    <span className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-3 text-center">
-                      <Sparkles className="size-5 text-muted" aria-hidden="true" />
-                      <span className="text-[12px] leading-4 font-medium text-muted">Example coming soon</span>
-                    </span>
+                    <StylePlaceholder style={s} />
                   )}
                 </div>
                 <div className="px-3 py-2">
@@ -294,7 +291,7 @@ export default function HomePage() {
         {/* 10. FAQ */}
         <Section id="faq" aria-labelledby="faq-title" className="pt-0 md:pt-0">
           <div className="grid gap-8 lg:grid-cols-[1fr_1.4fr]">
-            <SectionHeading id="faq-title" overline="FAQ" title="Frequently asked questions" lead={`Everything you need to know about ${brand.name}.`} />
+            <SectionHeading className="self-start lg:sticky lg:top-[calc(var(--header-h)+24px)] md:items-start" id="faq-title" overline="FAQ" title="Frequently asked questions" lead={`Everything you need to know about ${brand.name}.`} />
             <FaqList items={homeFaq} jsonLd />
           </div>
         </Section>

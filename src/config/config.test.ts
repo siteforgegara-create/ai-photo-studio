@@ -59,3 +59,15 @@ describe("catalogues", () => {
     expect(brand.name).toBe("AI Photo Studio");
   });
 });
+
+describe("Studio tips", () => {
+  it("every tool has 1–2 short tips without numbers or promises", () => {
+    for (const t of editTools) {
+      expect(t.tips.length).toBeGreaterThanOrEqual(1);
+      expect(t.tips.length).toBeLessThanOrEqual(2);
+      for (const tip of t.tips) {
+        expect(tip).not.toMatch(/\d+\s?%|guarantee|always perfect/i);
+      }
+    }
+  });
+});

@@ -48,3 +48,6 @@ next-env.d.ts
 
 # stage screenshots stay on disk, not in git
 /screenshots/
+
+# MediaPipe runtime (copied on postinstall)
+/public/vendor/

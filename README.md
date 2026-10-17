@@ -9,7 +9,7 @@ Premium AI headshots that look like you. Frontend is built mock-first in stages,
 ## Getting started
 
 ```bash
-npm install
+npm install                       # also copies the MediaPipe WASM runtime to public/vendor (postinstall)
 npx playwright install chromium   # once, for e2e and screenshots
 npm run dev                       # http://localhost:3000
 ```
@@ -35,7 +35,9 @@ src/app/           routes (CLAUDE.md §6)
 src/components/    ui/ (design-system), layout/ (headers, footer), before-after/, dev/
 src/config/        brand, packs, styles, edit-tools, use-cases, demo-manifest, selfie-check
 src/services/      service interfaces + mock/ implementations (Supabase later)
+src/features/      selfie-check (in-browser checks), crop (downloads, ZIP), shoot-wizard, shoot-page, auth
 src/stores/        zustand stores
+public/models/     face detector model (see public/models/README.md)
 docs/              product spec (Russian) — source of truth
 design/            approved references and motion prototypes
 reports/           per-stage reports

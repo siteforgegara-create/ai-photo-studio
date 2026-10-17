@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored runtime copied on postinstall (MediaPipe WASM glue).
+    "public/vendor/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 

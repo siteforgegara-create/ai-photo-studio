@@ -26,6 +26,7 @@ export function PackCard({
   selected = false,
   action,
   compact = false,
+  showOverline = true,
   className,
 }: {
   pack: ShootPack;
@@ -34,6 +35,8 @@ export function PackCard({
   selected?: boolean;
   action?: React.ReactNode;
   compact?: boolean;
+  /** Hide the overline (e.g. in the wizard, where the badge carries `MOST POPULAR`). */
+  showOverline?: boolean;
   className?: string;
 }) {
   const titleId = `pack-${pack.id}-title`;
@@ -51,8 +54,8 @@ export function PackCard({
     >
       {highlighted && <span className="absolute inset-x-0 top-0 h-1.5 bg-brand-gradient" aria-hidden="true" />}
       <div className="flex min-h-7 items-center justify-between gap-2">
-        <p className="text-overline text-muted">{pack.overline}</p>
-        {highlighted && badge && badge !== pack.overline && (
+        {showOverline ? <p className="text-overline text-muted">{pack.overline}</p> : <span />}
+        {highlighted && badge && (!showOverline || badge !== pack.overline) && (
           <span className="rounded-full bg-brand-soft px-2.5 py-1 text-[11px] leading-4 font-bold tracking-[.06em] text-brand-text uppercase">{badge}</span>
         )}
       </div>

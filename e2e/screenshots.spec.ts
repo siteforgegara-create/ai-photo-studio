@@ -1,6 +1,6 @@
 import { test, type Page } from "@playwright/test";
 import path from "node:path";
-import { seedScenario, type ScenarioId } from "../src/services/mock/scenarios";
+import { makePhotos, seedScenario, type MockDb, type ScenarioId } from "../src/services/mock/scenarios";
 
 /**
  * Stage screenshots — CLAUDE.md §7.2. Every screen × Light/Dark × 1440/390
@@ -13,6 +13,10 @@ type Shot = {
   name: string;
   path: string;
   scenario?: ScenarioId;
+  /** Custom mock db (overrides scenario). */
+  db?: () => MockDb;
+  /** Persisted wizard state (zustand `aps.wizard`). */
+  wizard?: Record<string, unknown>;
   widths?: number[];
   /** Runs after load (open a menu, etc.). */
   act?: (page: Page, width: number) => Promise<void>;
@@ -20,6 +24,25 @@ type Shot = {
 };
 
 const BASE_WIDTHS = [1440, 390];
+
+const wizardBase = { step: 0, selfies: [], consent: true, outfit: null, glasses: "keep", previewStyles: [], pack: "professional", styles: [], previewSkipped: false };
+
+/** A signed-in user with a draft shoot whose free preview is generating / ready. */
+function previewDb(status: "previewing" | "preview_ready"): MockDb {
+  const db = seedScenario("new-user");
+  db.user = { ...db.user!, previewUsed: true };
+  const shoot = { id: "shoot_draft", pack: "professional" as const, status, styleIds: ["corporate-gray", "city-bokeh"], targetCount: 0, readyCount: 0, createdAt: "2026-10-17T09:00:00.000Z", refundable: false };
+  db.shoots = [shoot];
+  if (status === "preview_ready") {
+    db.previews = ["corporate-gray", "corporate-gray", "city-bokeh", "city-bokeh"].map((styleId, i) => ({
+      id: `pv${i}`,
+      shootId: shoot.id,
+      styleId,
+      url: makePhotos({ ...shoot, styleIds: [styleId] }, 1)[0]!.url,
+    }));
+  }
+  return db;
+}
 
 const shots: Shot[] = [
   { name: "home-guest", path: "/" },
@@ -69,8 +92,45 @@ const shots: Shot[] = [
   { name: "forgot-password", path: "/forgot-password" },
   { name: "reset-password", path: "/reset-password" },
   { name: "shoot-new", path: "/shoot/new", scenario: "new-user" },
+  {
+    name: "wizard-1-selfies",
+    path: "/shoot/new",
+    act: async (page) => {
+      await page.locator('input[type="file"]').setInputFiles(["selfie-1.jpg", "selfie-2.jpg", "selfie-3.jpg", "no-face.jpg", "two-faces.jpg"].map((f) => path.join(__dirname, "fixtures", f)));
+      await page.getByText("More than one person").waitFor({ timeout: 60_000 });
+      await page.getByText("Looks great").first().waitFor({ timeout: 60_000 });
+      await page.getByRole("checkbox", { name: /These photos are of me/ }).click();
+    },
+  },
+  { name: "wizard-2-look", path: "/shoot/new", scenario: "new-user", wizard: { step: 1, outfit: "blazer", previewStyles: ["corporate-gray", "city-bokeh"] } },
+  { name: "wizard-2-auth-gate", path: "/shoot/new", widths: [1440, 390], fullPage: false, wizard: { step: 1, outfit: "suit", previewStyles: ["corporate-gray", "city-bokeh"] }, act: async (page) => { await page.getByRole("button", { name: /See my free previews/ }).click(); await page.getByRole("dialog").waitFor(); } },
+  { name: "wizard-3-generating", path: "/shoot/new", db: () => previewDb("previewing"), wizard: { step: 2, shootId: "shoot_draft", previewStyles: ["corporate-gray", "city-bokeh"] } },
+  { name: "wizard-3-preview", path: "/shoot/new", db: () => previewDb("preview_ready"), wizard: { step: 2, shootId: "shoot_draft", previewStyles: ["corporate-gray", "city-bokeh"] } },
+  { name: "wizard-4-package", path: "/shoot/new", db: () => previewDb("preview_ready"), wizard: { step: 3, shootId: "shoot_draft", previewStyles: ["corporate-gray", "city-bokeh"], styles: ["corporate-gray", "city-bokeh", "studio-white"] } },
+  { name: "wizard-5-done", path: "/shoot/new", scenario: "shoot-generating", wizard: { step: 4, shootId: "shoot_pro_1017" } },
   { name: "shoot-ready", path: "/shoot/shoot_pro_1017", scenario: "has-shoot" },
   { name: "shoot-generating", path: "/shoot/shoot_pro_1017", scenario: "shoot-generating" },
+  {
+    name: "shoot-lightbox",
+    path: "/shoot/shoot_pro_1017",
+    scenario: "has-shoot",
+    fullPage: false,
+    act: async (page) => {
+      await page.getByRole("button", { name: /Open photo 1,/ }).click();
+      await page.getByRole("dialog").waitFor();
+      await page.waitForTimeout(300);
+    },
+  },
+  {
+    name: "shoot-refund-dialog",
+    path: "/shoot/shoot_pro_1017",
+    scenario: "has-shoot",
+    fullPage: false,
+    act: async (page) => {
+      await page.getByRole("button", { name: /Request a full refund/ }).click();
+      await page.getByRole("dialog").waitFor();
+    },
+  },
   { name: "studio-guest", path: "/studio", widths: [1440, 1024, 390] },
   { name: "studio-signed-in", path: "/studio", scenario: "has-shoot", widths: [1440, 1024, 390] },
   { name: "not-found", path: "/this-page-does-not-exist" },
@@ -82,20 +142,23 @@ for (const shot of shots) {
     for (const width of shot.widths ?? BASE_WIDTHS) {
       test(`${shot.name} · ${theme} · ${width}`, async ({ page }) => {
         await page.setViewportSize({ width, height: width < 768 ? 844 : 900 });
-        const db = seedScenario(shot.scenario ?? "guest");
+        const db = shot.db ? shot.db() : seedScenario(shot.scenario ?? "guest");
+        const wizard = shot.wizard ? JSON.stringify({ state: { ...wizardBase, ...shot.wizard }, version: 1 }) : "";
         await page.addInitScript(
-          ([dbJson, themeName]) => {
+          ([dbJson, themeName, wizardJson]) => {
             window.localStorage.setItem("aps.mock.db", dbJson);
-            window.localStorage.setItem("aps.mock.flags", JSON.stringify({ latencyMs: 0 }));
+            window.localStorage.setItem("aps.mock.flags", JSON.stringify({ latencyMs: 0, previewDelayMs: 600000, generationTickMs: 600000 }));
             window.localStorage.setItem("aps-theme", themeName);
+            if (wizardJson) window.localStorage.setItem("aps.wizard", wizardJson);
           },
-          [JSON.stringify(db), theme] as const,
+          [JSON.stringify(db), theme, wizard] as const,
         );
         await page.goto(shot.path, { waitUntil: "networkidle" });
         await page.addStyleTag({ content: "[data-dev-panel]{display:none!important} *{caret-color:transparent!important}" });
         await page.waitForFunction(() => !document.querySelector(".skeleton"), null, { timeout: 5_000 }).catch(() => undefined);
         await settleImages(page);
         if (shot.act) await shot.act(page, width);
+        if (shot.act && (shot.fullPage ?? true)) await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: path.join(OUT, `${shot.name}--${theme}--${width}.png`), fullPage: shot.fullPage ?? true, animations: "disabled" });
       });
     }

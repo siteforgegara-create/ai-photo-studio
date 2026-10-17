@@ -26,6 +26,10 @@ export type DevFlags = {
   blockEdit: boolean;
   /** Artificial latency for every mock call, ms. */
   latencyMs: number;
+  /** Time until the free preview is ready, ms. */
+  previewDelayMs: number;
+  /** Interval between generation progress ticks, ms. */
+  generationTickMs: number;
 };
 
 export const defaultDevFlags: DevFlags = {
@@ -33,6 +37,8 @@ export const defaultDevFlags: DevFlags = {
   failEdit: false,
   blockEdit: false,
   latencyMs: 350,
+  previewDelayMs: 2500,
+  generationTickMs: 1500,
 };
 
 export type MockDb = {
@@ -88,6 +94,24 @@ export function makePhotos(shoot: Shoot, count: number): ShootPhoto[] {
       isFavorite: i < 3,
     };
   });
+}
+
+/** Edited (derived) frames of one generated photo — shown with an `Edited` badge. */
+export function makeEdits(shoot: Shoot, photoIndex: number, count: number): ShootPhoto[] {
+  const parentId = `${shoot.id}_p${String(photoIndex).padStart(3, "0")}`;
+  const url = "/demo/headshot/office.webp";
+  return Array.from({ length: count }, (_, i) => ({
+    id: `${parentId}_e${i + 1}`,
+    shootId: shoot.id,
+    styleId: shoot.styleIds[(photoIndex - 1) % shoot.styleIds.length],
+    parentId,
+    kind: "edit" as const,
+    url,
+    thumbUrl: url,
+    width: 1080,
+    height: 1350,
+    isFavorite: false,
+  }));
 }
 
 function professionalShoot(status: Shoot["status"], readyCount: number): Shoot {
@@ -155,7 +179,7 @@ export function seedScenario(scenario: ScenarioId): MockDb {
         ...base,
         user: { ...fixtureUser, previewUsed: true },
         shoots: [pro, ess],
-        photos: [...makePhotos(pro, 50), ...makePhotos(ess, 20)],
+        photos: [...makePhotos(pro, 50), ...makeEdits(pro, 1, 2), ...makePhotos(ess, 20)],
         ledger: [
           { id: "l1", createdAt: "2026-10-02T15:30:00.000Z", label: "Essential shoot · edit credits", delta: 10 },
           { id: "l2", createdAt: "2026-10-03T10:12:00.000Z", label: "Background edit · 2 variants", delta: -2 },

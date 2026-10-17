@@ -21,8 +21,10 @@ export const selfieCheckConfig = {
     /** Detector confidence for counting a face. */
     minDetectionConfidence: 0.6,
   },
-  /** Variance of Laplacian on the face region. Below → warn `Slightly blurry`. */
-  sharpness: { warnBelow: 60 },
+  /** Variance of Laplacian on the face region (normalised to 256 px). Below → warn `Slightly blurry`. */
+  sharpness: { warnBelow: 40 },
+  /** Face region is analysed at this size (px, longest side) for speed and comparable metrics. */
+  analysisSize: 256,
   /** Mean luminance (0–255) of the face region. */
   brightness: { warnBelow: 70, warnAbove: 230 },
   /** dHash Hamming distance (64-bit). At or below → warn `Very similar to another photo`. */
@@ -45,8 +47,7 @@ export const selfieReasonCopy: Record<SelfieReason, string> = {
   "small-face": "Face is small — crop closer",
   blurry: "Slightly blurry",
   "too-dark": "Too dark",
-  // TODO(owner): copy for over-exposed selfies is not in the docs; placeholder below.
-  "too-bright": "Too bright",
+  "too-bright": "Too bright — avoid direct sunlight or flash",
   duplicate: "Very similar to another photo",
 };
 

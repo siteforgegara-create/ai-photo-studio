@@ -108,8 +108,6 @@ export const mockAuth: AuthService = {
 
 /* ───────────────────────── Shoots ───────────────────────── */
 
-const PREVIEW_DELAY_MS = 2500;
-const GENERATION_TICK_MS = 1500;
 const GENERATION_STEP = 4;
 
 export const mockShoots: ShootsService = {
@@ -163,7 +161,15 @@ export const mockShoots: ShootsService = {
       }
     });
     setTimeout(() => {
-      if (getFlags().failGeneration) return; // stays in `previewing`; UI shows the error path via subscribe
+      if (getFlags().failGeneration) {
+        // Generation failed: the free preview is given back and the draft returns to `draft`.
+        updateDb((d) => {
+          const s = d.shoots.find((x) => x.id === shootId);
+          if (s) s.status = "draft";
+          if (d.user) d.user = { ...d.user, previewUsed: false };
+        });
+        return;
+      }
       updateDb((d) => {
         const s = d.shoots.find((x) => x.id === shootId);
         if (!s) return;
@@ -180,7 +186,7 @@ export const mockShoots: ShootsService = {
           ),
         );
       });
-    }, PREVIEW_DELAY_MS);
+    }, getFlags().previewDelayMs);
     return findShoot(shootId);
   },
   async getPreviews(shootId) {
@@ -193,6 +199,8 @@ export const mockShoots: ShootsService = {
     requireUser();
     await delay();
     const pack = getShootPack(packId);
+    const existing = findShoot(shootId);
+    if (existing.status === "generating" || existing.status === "ready") return existing; // idempotent (webhook retries)
     updateDb((d) => {
       const s = d.shoots.find((x) => x.id === shootId);
       if (!s) return;
@@ -203,6 +211,7 @@ export const mockShoots: ShootsService = {
         targetCount: pack.photos,
         readyCount: 0,
         refundable: true,
+        coverUrl: makePhotos({ ...s, styleIds }, 1)[0]?.url,
       } satisfies Partial<Shoot>);
       d.ledger.push({ id: newId("ledger"), createdAt: nowIso(), label: `${pack.name} shoot · edit credits`, delta: pack.editCredits });
     });
@@ -217,7 +226,9 @@ export const mockShoots: ShootsService = {
   async list() {
     await delay();
     if (!getDb().user) return [];
-    return getDb().shoots.filter((s) => s.status !== "draft");
+    return getDb()
+      .shoots.filter((s) => s.status !== "draft" && s.status !== "previewing" && s.status !== "preview_ready")
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   },
   async listPhotos(shootId) {
     await delay();
@@ -254,7 +265,7 @@ export const mockShoots: ShootsService = {
           s.expiresAt = addDaysIso(30);
         }
       });
-    }, GENERATION_TICK_MS);
+    }, getFlags().generationTickMs);
     queueMicrotask(emit);
     return () => {
       off();

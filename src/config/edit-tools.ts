@@ -54,8 +54,7 @@ export const editTools: readonly EditTool[] = [
       { id: "brand", name: "Brand", options: [opt("solid-color", "Solid color", { kind: "color" })] },
     ],
     custom: { type: "text", maxLength: 300, label: "Describe your background" },
-    // TODO(owner): tips copy for every tool (02-studio.md mentions a Tips card but no text).
-    tips: [],
+    tips: ["Pick a backdrop that suits where the photo will be used — plain studio tones for CVs, an office or city for LinkedIn and websites.", "Brand colour works best when it is calm and not too saturated."],
   },
   {
     id: "outfit",
@@ -69,7 +68,7 @@ export const editTools: readonly EditTool[] = [
       { id: "smart-casual", name: "Smart Casual", options: [opt("knit-sweater", "Knit Sweater"), opt("oxford-shirt", "Oxford Shirt"), opt("turtleneck", "Turtleneck")] },
       { id: "industry", name: "Industry", options: [opt("medical-white-coat", "Medical White Coat"), opt("scrubs", "Scrubs")] },
     ],
-    tips: [],
+    tips: ["Choose what you would actually wear to work in your field — it reads as more authentic.", "Generate a couple of variants and keep the one where the collar and fit look most natural."],
   },
   {
     id: "retouch",
@@ -84,7 +83,7 @@ export const editTools: readonly EditTool[] = [
       { id: "reduce-shine", name: "Reduce shine" },
       { id: "soften-under-eyes", name: "Soften under-eyes" },
     ],
-    tips: [],
+    tips: ["Start with Subtle — you can always go further, but heavy smoothing makes you look less like yourself.", "Turn on only the touch-ups you need; each one is applied gently."],
   },
   {
     id: "relight",
@@ -100,7 +99,7 @@ export const editTools: readonly EditTool[] = [
         options: [opt("soft-studio", "Soft Studio"), opt("window-light", "Window Light"), opt("warm-golden", "Warm Golden"), opt("dramatic-side", "Dramatic Side")],
       },
     ],
-    tips: [],
+    tips: ["Soft Studio suits most headshots; Window Light gives a warmer, more relaxed feel.", "Dramatic Side works best on plain backgrounds."],
   },
   {
     id: "creative",
@@ -117,7 +116,7 @@ export const editTools: readonly EditTool[] = [
       },
     ],
     custom: { type: "text", maxLength: 300, label: "Describe your style" },
-    tips: [],
+    tips: ["Creative styles are for portfolios, speaker pages and social profiles rather than formal documents.", "Describe the mood you want in Custom — colours, light, era — rather than a specific person."],
   },
   {
     id: "place",
@@ -134,7 +133,7 @@ export const editTools: readonly EditTool[] = [
       },
     ],
     custom: { type: "scene", label: "Scene Photo", placementLabel: "Describe placement" },
-    tips: [],
+    tips: ["Choose a scene photo with light that matches yours — similar direction and brightness blend best.", "Leave room in the scene where you want to appear and describe the spot in Describe placement."],
   },
   {
     id: "crop",
@@ -144,7 +143,7 @@ export const editTools: readonly EditTool[] = [
     pricePerVariant: editCostPerVariant.crop,
     creative: false,
     categories: [],
-    tips: [],
+    tips: ["Use 1:1 for LinkedIn and avatars, 3:4 for CVs.", "Everything here runs in your browser and is free — nothing is uploaded."],
   },
 ] as const;
 

@@ -31,7 +31,9 @@ describe("mock services", () => {
     __resetMockDb("has-shoot");
     const shoots = await mockShoots.list();
     expect(shoots.map((s) => s.pack)).toEqual(["professional", "essential"]);
-    expect((await mockShoots.listPhotos(shoots[0]!.id)).length).toBe(50);
+    const photos = await mockShoots.listPhotos(shoots[0]!.id);
+    expect(photos.filter((p) => p.kind === "generated")).toHaveLength(50);
+    expect(photos.filter((p) => p.kind === "edit").every((p) => p.parentId)).toBe(true);
     expect((await mockCredits.getBalance()).credits).toBe(30);
   });
 

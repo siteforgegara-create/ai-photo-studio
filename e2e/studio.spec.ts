@@ -28,8 +28,8 @@ test.describe("Studio", () => {
     await seed(page, "guest");
     await page.goto("/studio");
     await expect(page.getByRole("heading", { level: 1, name: "Background" })).toBeVisible();
-    await expect(page.getByText("Demo mode · 0 credits")).toBeVisible();
-    await expect(page.getByRole("button", { name: /Generate — unavailable in demo/ })).toBeDisabled();
+    await expect(page.getByText(isMobile ? /^Demo$/ : "Demo mode · 0 credits")).toBeVisible();
+    await expect(page.getByRole("button", { name: /unavailable in demo/i })).toBeDisabled();
 
     // Click through tools and options — the example changes, nothing is requested.
     for (const name of ["Outfit", "Retouch", "Creative Style", "Background"]) {
@@ -213,4 +213,54 @@ test.describe("Studio", () => {
     await expect(sheet).toBeHidden();
     await expect(optionsTab).toBeFocused();
   });
+});
+
+test.describe("Studio mobile: Generate bar on the first screen", () => {
+  for (const size of [
+    { width: 390, height: 844 },
+    { width: 360, height: 740 },
+  ]) {
+    for (const scenario of ["guest", "has-shoot"] as const) {
+      test(`${size.width}×${size.height} · ${scenario}`, async ({ page, isMobile }) => {
+        test.skip(!isMobile, "mobile project");
+        await page.setViewportSize(size);
+        await seed(page, scenario);
+        await page.goto(scenario === "guest" ? "/studio" : "/studio?photo=shoot_pro_1017_p001");
+
+        const bar = page.locator("[data-generate-bar]");
+        const cta = bar.getByRole("button", { name: scenario === "guest" ? /unavailable in demo/i : "Generate · 2 credits" });
+        await expect(cta).toBeVisible();
+        await expect(bar.getByRole("radiogroup", { name: "Number of variants" })).toBeVisible();
+        const tabBar = page.getByRole("navigation", { name: "Studio" });
+
+        const [barBox, tabBox, header] = await Promise.all([bar.boundingBox(), tabBar.boundingBox(), page.locator("header").first().boundingBox()]);
+        // Bar sits right above the tab bar, fully inside the viewport, without scrolling.
+        expect(barBox!.y + barBox!.height).toBeLessThanOrEqual(tabBox!.y + 1);
+        expect(tabBox!.y + tabBox!.height).toBeLessThanOrEqual(size.height + 1);
+        expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+        // Preview: whole 4:5 frame visible between the header and the bar (no overlap, no crop).
+        const frame = page.locator("[data-preview-area] figure").first();
+        await expect(frame).toBeVisible();
+        const f = (await frame.boundingBox())!;
+        expect(f.y).toBeGreaterThanOrEqual(header!.y + header!.height);
+        expect(f.y + f.height).toBeLessThanOrEqual(barBox!.y);
+        expect(f.x).toBeGreaterThanOrEqual(0);
+        expect(f.x + f.width).toBeLessThanOrEqual(size.width);
+        expect(Math.abs(f.width / f.height - 0.8)).toBeLessThan(0.02);
+        expect(f.height).toBeGreaterThan(240);
+        // Images are letterboxed, never cropped.
+        await expect(frame.locator("img").first()).toHaveCSS("object-fit", "contain");
+
+        // The Before/After handle is reachable and works (it is not under the bar).
+        if (scenario === "guest") {
+          const handle = slider(page);
+          const h = (await handle.boundingBox())!;
+          expect(h.y + h.height).toBeLessThanOrEqual(barBox!.y);
+          await page.touchscreen.tap(f.x + f.width * 0.8, f.y + f.height / 2);
+          expect(Number(await handle.getAttribute("aria-valuenow"))).toBeGreaterThan(70);
+        }
+      });
+    }
+  }
 });

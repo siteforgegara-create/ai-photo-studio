@@ -39,8 +39,11 @@ export function DownloadMenu({
   guard,
   variant = "secondary",
   align = "start",
+  iconOnly = false,
 }: {
   photo: ShootPhoto;
+  /** Compact trigger (mobile Studio): icon + chevron, accessible name `Download`. */
+  iconOnly?: boolean;
   onRecorded?: () => void;
   guard: DownloadGuard;
   variant?: ButtonProps["variant"];
@@ -50,9 +53,9 @@ export function DownloadMenu({
   return (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
-        <Button variant={variant} loading={busy !== null}>
+        <Button variant={variant} loading={busy !== null} size={iconOnly ? "sm" : undefined} aria-label={iconOnly ? "Download" : undefined}>
           {busy === null && <Download aria-hidden="true" />}
-          Download
+          {!iconOnly && "Download"}
           <ChevronDown aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>

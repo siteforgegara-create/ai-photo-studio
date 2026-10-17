@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, ImageOff, Loader2, Minus, PanelRightOpen, Plus, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowRight, Columns2, ImageOff, Loader2, Minus, PanelRightOpen, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { cropPresets, formatToolPrice } from "@/config/edit-tools";
 import { quoteEdit } from "@/config/packs";
 import type { ShootPhoto, Variants } from "@/services";
@@ -57,14 +57,13 @@ export function CenterPane({
   const option = s.optionByTool[s.tool];
   const demo = mode.kind === "demo";
   const isCrop = s.tool === "crop";
-  const quote = quoteEdit(s.tool, s.variants);
 
   const chips = tool.categories.length > 1 || !!tool.custom;
 
   return (
     <section aria-labelledby="studio-tool-title" className={cn("flex h-full min-h-0 flex-col gap-3", !compact && "rounded-[16px] border border-border bg-surface p-4 shadow-card md:p-5")}>
       {/* 1. Title */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className={cn("flex items-start justify-between gap-3", compact ? "flex-none flex-nowrap items-center" : "flex-wrap")}>
         <div className="min-w-0">
           <h1 id="studio-tool-title" className={cn("text-text", compact ? "text-[22px] leading-7 font-extrabold" : "text-[24px] leading-8 font-extrabold")}>
             {tool.name}
@@ -75,9 +74,16 @@ export function CenterPane({
           {mode.kind === "demo" && !mode.showToggle && (
             <Link
               href="/shoot/new"
-              className="inline-flex items-center gap-1.5 rounded-[10px] border border-border bg-surface-2 px-3 py-2 text-[13px] font-semibold text-text hover:border-brand"
+              aria-label={compact ? "Example photo. Get your own headshots" : undefined}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[10px] border border-border bg-surface-2 px-3 py-2 text-[13px] font-semibold whitespace-nowrap text-text hover:border-brand"
             >
-              Example photo · <span className="text-brand-text">Get your own headshots</span>
+              {compact ? (
+                <span className="text-brand-text">Get your own</span>
+              ) : (
+                <>
+                  Example photo · <span className="text-brand-text">Get your own headshots</span>
+                </>
+              )}
               <ArrowRight className="size-3.5 text-brand-text" aria-hidden="true" />
             </Link>
           )}
@@ -100,7 +106,8 @@ export function CenterPane({
       {!compact && chips && !isCrop && <CategoryChips />}
 
       {/* 3. Preview */}
-      <div className={cn("relative flex items-center justify-center", compact ? "flex-none" : "min-h-0 flex-1")}>
+      {/* Size container: the 4:5 frame is fitted into whatever space is left (never cropped, never under the fixed bars). */}
+      <div className={cn("relative flex items-center justify-center", isCrop && compact ? "flex-none" : "min-h-0 flex-1 [container-type:size]")} data-preview-area>
         {isCrop ? (
           <CropEditor
             key={mode.kind === "real" ? (mode.after ?? mode.photo).id : "demo"}
@@ -121,39 +128,79 @@ export function CenterPane({
         <>
           {/* 4. Status row */}
           <StatusRow mode={mode} guard={guard} onRecorded={onRecorded} compact={compact} />
-          {/* 5. Bottom bar */}
-          <div className={cn("flex flex-wrap items-center gap-3", !compact && "border-t border-border pt-3")}>
-            <VariantPicker value={s.variants} onChange={s.setVariants} disabled={demo} compact={compact} />
-            <div className="ml-auto flex flex-col items-end gap-1">
-              {demo ? (
-                <Button variant="primary" size="lg" disabled className="min-w-56">
-                  Generate — unavailable in demo
-                </Button>
-              ) : (
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="min-w-56"
-                  onClick={onGenerate}
-                  disabled={!mode.canGenerate || s.job.state === "generating" || s.job.state === "awaiting-confirmation"}
-                  loading={s.job.state === "generating"}
-                >
-                  {s.job.state !== "generating" && <Sparkles aria-hidden="true" />}
-                  Generate · {quote.credits} credits
-                </Button>
-              )}
-              <p className="text-[12px] text-muted">
-                {demo
-                  ? "Prepared example · No AI request · No credits"
-                  : `${formatToolPrice(tool.pricePerVariant)} per variant · ${credits} available · charged only after you confirm`}
-              </p>
-            </div>
-          </div>
+          {/* 5. Bottom bar — on mobile it is a fixed bar above the tab bar (GenerateBar). */}
+          {!compact && <GenerateControls mode={mode} onGenerate={onGenerate} credits={credits} />}
         </>
       )}
       <JobAlerts />
       {option === CUSTOM_OPTION && demo && !isCrop && <p className="text-[12px] text-muted">Custom options are generated for your own photos only.</p>}
     </section>
+  );
+}
+
+/** Variants + `Generate · N credits` (demo: disabled). Desktop/tablet: bottom of the center card; mobile: inside GenerateBar. */
+function GenerateControls({ mode, onGenerate, credits, compact = false }: { mode: CenterMode; onGenerate: () => void; credits: number; compact?: boolean }) {
+  const s = useStudio();
+  const tool = toolById(s.tool);
+  const demo = mode.kind === "demo";
+  const quote = quoteEdit(s.tool, s.variants);
+  const button = demo ? (
+    <Button variant="primary" size="lg" disabled className={compact ? "min-w-0 flex-1 px-3" : "min-w-56"}>
+      {compact ? "Unavailable in demo" : "Generate — unavailable in demo"}
+    </Button>
+  ) : (
+    <Button
+      variant="primary"
+      size="lg"
+      className={compact ? "min-w-0 flex-1 px-3" : "min-w-56"}
+      onClick={onGenerate}
+      disabled={!mode.canGenerate || s.job.state === "generating" || s.job.state === "awaiting-confirmation"}
+      loading={s.job.state === "generating"}
+    >
+      {s.job.state !== "generating" && <Sparkles aria-hidden="true" />}
+      Generate · {quote.credits} credits
+    </Button>
+  );
+  const note = demo
+    ? "Prepared example · No AI request · No credits"
+    : compact
+      ? `${formatToolPrice(tool.pricePerVariant)} per variant · ${credits} available`
+      : `${formatToolPrice(tool.pricePerVariant)} per variant · ${credits} available · charged only after you confirm`;
+
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <VariantPicker value={s.variants} onChange={s.setVariants} disabled={demo} compact />
+          {button}
+        </div>
+        <p className="text-center text-[12px] leading-4 text-muted">{note}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+      <VariantPicker value={s.variants} onChange={s.setVariants} disabled={demo} compact={false} />
+      <div className="ml-auto flex flex-col items-end gap-1">
+        {button}
+        <p className="text-[12px] text-muted">{note}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Mobile (< 768): variants + Generate pinned above the tab bar so the CTA is
+ * always on the first screen (review of Stage 3). Respects the safe area.
+ */
+export function GenerateBar({ mode, onGenerate, credits }: { mode: CenterMode; onGenerate: () => void; credits: number }) {
+  return (
+    <div
+      data-generate-bar
+      className="fixed inset-x-0 bottom-[calc(var(--studio-tabbar)+env(safe-area-inset-bottom))] z-30 h-[var(--studio-genbar)] border-t border-border bg-surface px-4 pt-2"
+    >
+      <GenerateControls mode={mode} onGenerate={onGenerate} credits={credits} compact />
+    </div>
   );
 }
 
@@ -182,8 +229,9 @@ export function CategoryChips({ className }: { className?: string }) {
 
 function PreviewImage({ mode, compact }: { mode: CenterMode; compact: boolean }) {
   const s = useStudio();
-  // Desktop/tablet: fit the 4:5 frame into the available height. Mobile: full width.
-  const frame = compact ? "relative aspect-[4/5] w-full" : "relative aspect-[4/5] h-full max-h-full w-auto max-w-full";
+  // The 4:5 frame is the largest box that fits the size container (both axes); photos use object-fit: contain.
+  const frame = "relative aspect-[4/5] w-[min(100cqw,80cqh)]";
+  void compact;
   const zoomed = s.view.zoom > 1.001;
 
   if (mode.kind === "demo") {
@@ -212,6 +260,7 @@ function PreviewImage({ mode, compact }: { mode: CenterMode; compact: boolean })
         caption={zoomed ? "Drag to move · use the handle to compare" : "Drag to compare"}
         sizes="(min-width: 1200px) 640px, 100vw"
         priority
+        fit="contain"
         className={frame}
       />
     );
@@ -223,7 +272,7 @@ function PreviewImage({ mode, compact }: { mode: CenterMode; compact: boolean })
     return (
       <figure className={cn(frame, "overflow-hidden rounded-[16px] bg-surface-2")}>
         <div className="absolute inset-0" style={s.view.zoom !== 1 ? { transform: `scale(${s.view.zoom})` } : undefined}>
-          <Image src={before.url} alt="Your photo — original" fill sizes="(min-width: 1200px) 640px, 100vw" className="object-cover" priority />
+          <Image src={before.url} alt="Your photo — original" fill sizes="(min-width: 1200px) 640px, 100vw" className="object-contain" priority />
         </div>
         <span className="absolute top-3 left-3 rounded-[8px] bg-overlay-chip px-2.5 py-1 text-[12px] font-semibold text-white">Original</span>
         <figcaption className="sr-only">Your original photo. Pick an option and generate to compare.</figcaption>
@@ -246,6 +295,7 @@ function PreviewImage({ mode, compact }: { mode: CenterMode; compact: boolean })
       caption={zoomed ? "Drag to move · use the handle to compare" : "Drag to compare"}
       sizes="(min-width: 1200px) 640px, 100vw"
       priority
+      fit="contain"
       className={frame}
     />
   );
@@ -257,7 +307,7 @@ function StatusRow({ mode, guard, onRecorded, compact }: { mode: CenterMode; gua
   const demo = mode.kind === "demo";
   const badge = demo ? (
     <StatusBadge tone="demo" dot>
-      Demo mode · 0 credits
+      {compact ? "Demo" : "Demo mode · 0 credits"}
     </StatusBadge>
   ) : s.job.state === "generating" ? (
     <StatusBadge tone="info">
@@ -277,35 +327,36 @@ function StatusRow({ mode, guard, onRecorded, compact }: { mode: CenterMode; gua
         : "Pick an option, then generate.";
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2" aria-live="polite">
+    <div className={cn("flex items-center gap-x-3 gap-y-2", compact ? "flex-none flex-nowrap gap-x-2" : "flex-wrap")} aria-live="polite">
       {badge}
       {!compact && <span className="text-[13px] text-muted">{hint}</span>}
-      <div className="ml-auto flex items-center gap-1.5">
+      <div className={cn("ml-auto flex items-center", compact ? "gap-1" : "gap-1.5")}>
         <Button
           variant="secondary"
-          size="sm"
+          size={compact ? "icon-sm" : "sm"}
           aria-pressed={s.view.compare}
+          aria-label={compact ? "Compare" : undefined}
           onClick={() => s.setView({ compare: !s.view.compare })}
           disabled={!demo && !mode.after}
         >
-          Compare
+          {compact ? <Columns2 aria-hidden="true" /> : "Compare"}
         </Button>
         <div className="inline-flex items-center rounded-[10px] border border-border bg-surface" role="group" aria-label="Zoom">
           <Button variant="ghost" size="icon-sm" aria-label="Zoom out" disabled={z <= ZOOM_MIN} onClick={() => s.setView({ zoom: Math.max(ZOOM_MIN, z - ZOOM_STEP) })}>
             <Minus aria-hidden="true" />
           </Button>
-          <span className="w-12 text-center text-[13px] font-semibold tabular-nums text-text" aria-live="polite">
+          <span className="w-11 text-center text-[13px] font-semibold tabular-nums text-text" aria-live="polite">
             {Math.round(z * 100)}%
           </span>
           <Button variant="ghost" size="icon-sm" aria-label="Zoom in" disabled={z >= ZOOM_MAX} onClick={() => s.setView({ zoom: Math.min(ZOOM_MAX, z + ZOOM_STEP) })}>
             <Plus aria-hidden="true" />
           </Button>
         </div>
-        <Button variant="ghost" size="sm" onClick={s.resetView} aria-label="Reset view">
+        <Button variant="ghost" size={compact ? "icon-sm" : "sm"} onClick={s.resetView} aria-label="Reset view">
           <RotateCcw aria-hidden="true" />
           {!compact && "Reset view"}
         </Button>
-        {mode.kind === "real" && <DownloadMenu photo={mode.after ?? mode.photo} guard={guard} onRecorded={onRecorded} align="end" />}
+        {mode.kind === "real" && <DownloadMenu photo={mode.after ?? mode.photo} guard={guard} onRecorded={onRecorded} align="end" iconOnly={compact} />}
       </div>
     </div>
   );

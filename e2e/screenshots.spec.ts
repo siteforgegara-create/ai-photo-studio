@@ -21,6 +21,8 @@ type Shot = {
   /** Runs after load (open a menu, etc.). */
   act?: (page: Page, width: number) => Promise<void>;
   fullPage?: boolean;
+  /** Viewport height override (default 844 below 768 px, else 900). */
+  height?: number;
 };
 
 const BASE_WIDTHS = [1440, 390];
@@ -202,7 +204,7 @@ for (const shot of shots) {
   for (const theme of ["light", "dark"] as const) {
     for (const width of shot.widths ?? BASE_WIDTHS) {
       test(`${shot.name} · ${theme} · ${width}`, async ({ page }) => {
-        await page.setViewportSize({ width, height: width < 768 ? 844 : 900 });
+        await page.setViewportSize({ width, height: shot.height ?? (width < 768 ? 844 : 900) });
         const db = shot.db ? shot.db() : seedScenario(shot.scenario ?? "guest");
         const wizard = shot.wizard ? JSON.stringify({ state: { ...wizardBase, ...shot.wizard }, version: 1 }) : "";
         await page.addInitScript(

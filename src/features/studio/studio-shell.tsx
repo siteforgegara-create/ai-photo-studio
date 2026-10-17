@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { downloadPhoto } from "@/features/shoot-page/download-menu";
 import { useRefundGuard } from "@/features/shoot-page/use-refund-guard";
-import { CategoryChips, CenterPane, type CenterMode } from "./center";
+import { CategoryChips, CenterPane, GenerateBar, type CenterMode } from "./center";
 import { defaultOptionFor, toolById } from "./demo";
 import { EditsPanel, OptionsPanel, ShootPanel } from "./panels";
 import { DesktopPanel, MobilePanel, TabletDrawer, type PanelSlots } from "./right-panel";
@@ -151,11 +151,17 @@ export function StudioShell() {
 
       {bp === "mobile" && (
         <>
-          <div className="flex flex-col gap-4 px-4 pt-4 pb-[calc(88px+env(safe-area-inset-bottom))]">
-            <div ref={toolsRef}>
+          {/* One screen: tools, title, preview (fitted), status — above the fixed Generate bar and tab bar. */}
+          <div
+            className="flex h-[calc(100dvh-var(--header-h))] flex-col gap-3 overflow-y-auto px-4 pt-3 [--studio-genbar:84px] [--studio-tabbar:64px]"
+            style={{ paddingBottom: `calc(var(--studio-tabbar) + ${s.tool === "crop" ? "0px" : "var(--studio-genbar)"} + env(safe-area-inset-bottom) + 12px)` }}
+          >
+            <div ref={toolsRef} className="flex-none">
               <ToolStrip active={s.tool} onSelect={selectTool} />
             </div>
-            {center(true)}
+            {/* Crop & Export keeps its own long panel, so it scrolls instead of being fitted. */}
+            <div className={s.tool === "crop" ? "flex-none" : "flex min-h-0 flex-1 flex-col"}>{center(true)}</div>
+            {s.tool !== "crop" && <GenerateBar mode={mode} onGenerate={() => void gen.request()} credits={credits} />}
           </div>
           <MobilePanel
             slots={slots}

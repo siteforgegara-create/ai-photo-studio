@@ -19,20 +19,33 @@ export function fileName(photo: ShootPhoto, format: DownloadFormatId) {
 
 /**
  * Downloads one photo in a given format. Crops are rendered in the browser
- * (canvas, face-centred). Only full-size downloads are recorded — they end
- * refund eligibility (M6).
+ * (canvas, face-centred). Every download is recorded — any format ends refund
+ * eligibility (M6), so callers confirm first (see useDownloadGuard).
  */
 export async function downloadPhoto(photo: ShootPhoto, format: DownloadFormatId, onRecorded?: () => void) {
   const blob = await renderFormat(photo.url, format);
   saveBlob(blob, fileName(photo, format));
-  if (formatSpecs[format].fullSize) {
-    await shootsService.download([photo.id], "original");
-    onRecorded?.();
-  }
+  await shootsService.download([photo.id], format);
+  onRecorded?.();
 }
 
+/** Runs `action` now, or after the one-time refund confirmation (M6). */
+export type DownloadGuard = (action: () => Promise<void>) => void;
+
 /** `Download ▾` with the five formats (06-shoot-flow §2). */
-export function DownloadMenu({ photo, onRecorded, variant = "secondary", align = "start" }: { photo: ShootPhoto; onRecorded?: () => void; variant?: ButtonProps["variant"]; align?: "start" | "center" | "end" }) {
+export function DownloadMenu({
+  photo,
+  onRecorded,
+  guard,
+  variant = "secondary",
+  align = "start",
+}: {
+  photo: ShootPhoto;
+  onRecorded?: () => void;
+  guard: DownloadGuard;
+  variant?: ButtonProps["variant"];
+  align?: "start" | "center" | "end";
+}) {
   const [busy, setBusy] = React.useState<DownloadFormatId | null>(null);
   return (
     <DropdownMenu modal={false}>
@@ -48,14 +61,16 @@ export function DownloadMenu({ photo, onRecorded, variant = "secondary", align =
         {downloadFormats.map((f) => (
           <DropdownMenuItem
             key={f.id}
-            onSelect={async () => {
-              setBusy(f.id);
-              try {
-                await downloadPhoto(photo, f.id, onRecorded);
-              } finally {
-                setBusy(null);
-              }
-            }}
+            onSelect={() =>
+              guard(async () => {
+                setBusy(f.id);
+                try {
+                  await downloadPhoto(photo, f.id, onRecorded);
+                } finally {
+                  setBusy(null);
+                }
+              })
+            }
           >
             {f.name}
           </DropdownMenuItem>

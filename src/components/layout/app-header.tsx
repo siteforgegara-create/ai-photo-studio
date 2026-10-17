@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { loginHref } from "@/lib/redirects";
 import { ArrowLeft, ArrowRight, ChevronLeft } from "lucide-react";
 import { useSession } from "@/stores/session";
 import { Button } from "@/components/ui/button";
@@ -56,20 +58,40 @@ export function AppHeader({ backHref }: { backHref?: string | null }) {
           {status === "guest" && (
             <>
               <SegmentedThemeToggle className="hidden md:inline-flex" />
-              <Button asChild variant="ghost" className="hidden sm:inline-flex">
-                <Link href="/login">Log In</Link>
-              </Button>
-              <Button asChild variant="primary" size="md">
-                <Link href="/shoot/new">
-                  <span className="hidden sm:inline">Get your headshots</span>
-                  <span className="sm:hidden">Get started</span>
-                  <ArrowRight aria-hidden="true" />
-                </Link>
-              </Button>
+              {/* usePathname is URL data → behind Suspense so /shoot/[id] keeps a static shell. */}
+              <React.Suspense fallback={<span className="h-10 w-24" aria-hidden="true" />}>
+                <GuestActions />
+              </React.Suspense>
             </>
           )}
         </div>
       </div>
     </header>
+  );
+}
+
+function GuestActions() {
+  const pathname = usePathname();
+  if (pathname === "/shoot/new") {
+    // Already in the wizard: no "get started" CTA, just a way to sign in (keeps the wizard as `next`).
+    return (
+      <Button asChild variant="secondary">
+        <Link href={loginHref(pathname)}>Log In</Link>
+      </Button>
+    );
+  }
+  return (
+    <>
+      <Button asChild variant="ghost" className="hidden sm:inline-flex">
+        <Link href="/login">Log In</Link>
+      </Button>
+      <Button asChild variant="primary" size="md">
+        <Link href="/shoot/new">
+          <span className="hidden sm:inline">Get your headshots</span>
+          <span className="sm:hidden">Get started</span>
+          <ArrowRight aria-hidden="true" />
+        </Link>
+      </Button>
+    </>
   );
 }

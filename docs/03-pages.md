@@ -34,7 +34,7 @@
     - How many selfies do I need? — 4 to 8. We check each one instantly and tell you if it's blurry, too dark or too small.
     - Do I really see results before paying? — Yes. You get 4 free watermarked previews in two styles. One free preview per account.
     - Will the headshots look like me? — Every photo is compared with your selfies, and photos that don't pass the likeness check are discarded before you see them.
-    - What if I'm not happy? — You get a full refund until your first full-size download.
+    - What if I'm not happy? — You get a full refund until your first download.
     - What resolution and rights do I get? — 4K on every plan, with a commercial license — use them on LinkedIn, your website, print and ads.
     - Can I change the background or outfit later? — Yes. Every package includes edit credits for the Studio.
     - What happens to my photos? — Selfies are deleted 24 hours after your shoot. Your headshots are kept for 30 days so you can download them, and you can delete everything sooner with one click.
@@ -51,7 +51,7 @@
 - Три карточки тарифов из `packs.ts` (M2): overline (`GET STARTED` / `MOST POPULAR` / `BEST VALUE`), название, цена крупно (`$49`, `one-time`), список (кадры, стили, кредиты на правки, `4K · commercial license`, `Likeness check`, у Executive — `Priority processing`), кнопка `Choose Professional →` (средняя — primary). Ведёт на `/shoot/new?pack=professional`.
 - **Compare plans** — таблица с галочками по тем же пунктам.
 - **Edit credits** (`#credits`) — три пакета кредитов (M3) в компактных карточках: `20 credits` / `60` / `150`, `Price to be confirmed`, кнопки `Buy` (гость → `/login?next=/pricing%23credits`). Пояснение стоимости правок: `Background, outfit, retouch, relight — 1 credit per variant · Creative styles and Place Me Here — 2 credits · Crop & export — free`.
-- **Our guarantee** — карточка: `Full refund until your first full-size download. Failed edits are refunded automatically. Unused credit packs can be refunded within 14 days.`
+- **Our guarantee** — карточка: `Full refund until your first download. Failed edits are refunded automatically. Unused credit packs can be refunded within 14 days.`
 - **Teams** — плашка `Need headshots for your whole team? Join the Teams waitlist →`.
 - Мини-FAQ (4 вопроса про оплату и возвраты).
 

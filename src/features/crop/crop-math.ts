@@ -15,17 +15,15 @@ export type FormatSpec = {
   mime: "image/jpeg" | "image/png";
   /** Face height as a share of the crop height. */
   faceShare?: number;
-  /** Full-size download? Only these end refund eligibility (M6). */
-  fullSize: boolean;
   suffix: string;
 };
 
 export const formatSpecs: Record<DownloadFormatId, FormatSpec> = {
-  original: { id: "original", width: 0, height: 0, mime: "image/jpeg", fullSize: true, suffix: "4k" },
-  linkedin: { id: "linkedin", width: 1080, height: 1080, mime: "image/jpeg", faceShare: 0.42, fullSize: false, suffix: "linkedin-1x1" },
-  resume: { id: "resume", width: 1200, height: 1600, mime: "image/jpeg", faceShare: 0.34, fullSize: false, suffix: "resume-3x4" },
-  avatar: { id: "avatar", width: 1080, height: 1080, mime: "image/png", faceShare: 0.5, fullSize: false, suffix: "avatar" },
-  website: { id: "website", width: 1920, height: 1080, mime: "image/jpeg", fullSize: false, suffix: "website-16x9" },
+  original: { id: "original", width: 0, height: 0, mime: "image/jpeg", suffix: "4k" },
+  linkedin: { id: "linkedin", width: 1080, height: 1080, mime: "image/jpeg", faceShare: 0.42, suffix: "linkedin-1x1" },
+  resume: { id: "resume", width: 1200, height: 1600, mime: "image/jpeg", faceShare: 0.34, suffix: "resume-3x4" },
+  avatar: { id: "avatar", width: 1080, height: 1080, mime: "image/png", faceShare: 0.5, suffix: "avatar" },
+  website: { id: "website", width: 1920, height: 1080, mime: "image/jpeg", suffix: "website-16x9" },
 };
 
 /** Where the face centre sits vertically in the crop (leaves headroom above). */

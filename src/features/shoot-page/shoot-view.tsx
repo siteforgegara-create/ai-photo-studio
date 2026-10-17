@@ -23,7 +23,7 @@ import { Lightbox } from "@/components/ui/lightbox";
 import { ProgressCount } from "@/components/ui/progress-count";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { NotFoundContent } from "@/components/layout/not-found-content";
-import { DownloadMenu, downloadPhoto, fileName } from "./download-menu";
+import { DownloadMenu, downloadPhoto, fileName, type DownloadGuard } from "./download-menu";
 
 type Filter = "all" | "favorites" | `style:${string}`;
 type TileSize = "s" | "l";
@@ -58,6 +58,7 @@ export function ShootView({ id }: { id: string }) {
   const [busy, setBusy] = React.useState(false);
   const [title, setTitle] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [pendingDownload, setPendingDownload] = React.useState<(() => Promise<void>) | null>(null);
 
   const refreshRefund = React.useCallback(async () => {
     setRefund(await shootsService.refundEligibility(id).catch(() => null));
@@ -118,6 +119,12 @@ export function ShootView({ id }: { id: string }) {
 
   const onRecorded = () => void refreshRefund();
 
+  /** M6: any download ends refund eligibility — confirm once, before the first one. */
+  const guard: DownloadGuard = (action) => {
+    if (refund?.eligible) setPendingDownload(() => action);
+    else void action();
+  };
+
   const downloadAll = async () => {
     const list = ordered;
     setZip({ done: 0, total: list.length });
@@ -160,7 +167,7 @@ export function ShootView({ id }: { id: string }) {
         </div>
         {!refunded && (
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => void downloadAll()} disabled={generating || zip !== null || ordered.length === 0} loading={zip !== null}>
+            <Button variant="secondary" onClick={() => guard(downloadAll)} disabled={generating || zip !== null || ordered.length === 0} loading={zip !== null}>
               {zip === null && <Download aria-hidden="true" />}
               {zip ? `Preparing ZIP… ${zip.done} of ${zip.total}` : "Download all (ZIP)"}
             </Button>
@@ -213,8 +220,8 @@ export function ShootView({ id }: { id: string }) {
             <p className="flex items-start gap-2 text-[14px] text-text">
               <ShieldCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />
               <span>
-                <span className="font-semibold">Full refund until your first full-size download.</span>{" "}
-                <span className="text-muted">Downloading an original or the ZIP ends refund eligibility.</span>
+                <span className="font-semibold">Full refund until your first download.</span>{" "}
+                <span className="text-muted">Downloading any photo or the ZIP ends refund eligibility.</span>
               </span>
             </p>
             <Button variant="ghost" size="sm" onClick={() => setDialog("refund")} className="self-start text-brand-text sm:self-auto">
@@ -281,7 +288,7 @@ export function ShootView({ id }: { id: string }) {
             <ul className={cn("mt-6 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4", gridCols)} aria-label={`${visible.length} photos`}>
               {visible.map((p, i) => (
                 <li key={p.id}>
-                  <PhotoTile photo={p} index={i} sizes={sizes} onOpen={() => setOpen(i)} onFavorite={() => void toggleFavorite(p)} onDownload={() => void downloadPhoto(p, "original", onRecorded)} />
+                  <PhotoTile photo={p} index={i} sizes={sizes} onOpen={() => setOpen(i)} onFavorite={() => void toggleFavorite(p)} onDownload={() => guard(() => downloadPhoto(p, "original", onRecorded))} />
                 </li>
               ))}
               {Array.from({ length: placeholders }).map((_, i) => (
@@ -303,7 +310,7 @@ export function ShootView({ id }: { id: string }) {
           if (!p) return null;
           return (
             <>
-              <DownloadMenu photo={p} onRecorded={onRecorded} />
+              <DownloadMenu photo={p} onRecorded={onRecorded} guard={guard} />
               <Button variant="secondary" aria-pressed={p.isFavorite} onClick={() => void toggleFavorite(p)}>
                 <Star className={cn(p.isFavorite && "fill-current text-brand-to")} aria-hidden="true" />
                 {p.isFavorite ? "Favorited" : "Favorite"}
@@ -313,6 +320,19 @@ export function ShootView({ id }: { id: string }) {
               </Button>
             </>
           );
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendingDownload !== null}
+        onOpenChange={(o) => !o && setPendingDownload(null)}
+        title="Downloading ends your refund eligibility. Continue?"
+        description="Packages are fully refundable until your first download — in any format, or the ZIP."
+        confirmLabel="Download"
+        onConfirm={() => {
+          const action = pendingDownload;
+          setPendingDownload(null);
+          if (action) void action();
         }}
       />
 

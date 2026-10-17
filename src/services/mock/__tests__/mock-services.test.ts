@@ -71,7 +71,7 @@ describe("mock services", () => {
     await expect(mockShoots.requestPreview(draft.id, ["corporate-gray", "city-bokeh"])).rejects.toMatchObject({ code: "preview-used" });
   });
 
-  it("refund: allowed until the first full-size download (M6)", async () => {
+  it("refund: allowed until the first download (M6)", async () => {
     __resetMockDb("has-shoot");
     expect(await mockShoots.refundEligibility("shoot_pro_1017")).toEqual({ eligible: true });
     await mockShoots.download(["shoot_pro_1017_p001"], "original");

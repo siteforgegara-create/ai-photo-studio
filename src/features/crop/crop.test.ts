@@ -42,7 +42,7 @@ describe("face-centred crops", () => {
     expect(l.x + l.width).toBeLessThan(1920);
   });
 
-  it("only Original counts as a full-size download (M6)", () => {
-    expect(Object.values(formatSpecs).filter((s) => s.fullSize).map((s) => s.id)).toEqual(["original"]);
+  it("defines all five download formats", () => {
+    expect(Object.keys(formatSpecs).sort()).toEqual(["avatar", "linkedin", "original", "resume", "website"]);
   });
 });

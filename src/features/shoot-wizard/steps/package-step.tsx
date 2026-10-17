@@ -10,7 +10,7 @@ import { ThumbTile } from "@/components/ui/thumb-tile";
 import { cn } from "@/lib/utils";
 import { normalizeStyles, styleLimit, useWizard } from "../store";
 
-const GUARANTEE = "Full refund until your first full-size download.";
+const GUARANTEE = "Full refund until your first download.";
 
 /** Step 4 — Package and styles (06-shoot-flow §1). */
 export function PackageStep({ busy, error, onBack, onCheckout }: { busy: boolean; error: string | null; onBack: () => void; onCheckout: () => void }) {

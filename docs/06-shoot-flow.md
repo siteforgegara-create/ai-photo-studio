@@ -61,13 +61,13 @@
 - Состояние генерации: 4 скелетона 4:5 с мягким шиммером, текст `Creating your previews…` и `This usually takes a few minutes. We'll also email you.` — **без процентов**, обновление статуса через `ShootsService.subscribe`.
 - Готово: 4 кадра (по 2 на стиль) 512px с диагональным водяным знаком `PREVIEW` поверх (водяной знак уже «впечён» в изображение на сервере, в mock — CSS-оверлей). Клик → лайтбокс без возможности скачать.
 - Под превью — блок «как будет в пакете»: `Full set: up to 100 photos · 4K · no watermark · every photo checked for likeness`.
-- Если результат не понравился: ссылка `Not quite you? Try different selfies` (назад на шаг 1; повторное превью недоступно — объясни это честно: `Your free preview has been used, but packages are fully refundable until your first full-size download.`).
+- Если результат не понравился: ссылка `Not quite you? Try different selfies` (назад на шаг 1; повторное превью недоступно — объясни это честно: `Your free preview has been used, but packages are fully refundable until your first download.`).
 - Кнопка `Choose a package →`.
 
 ### Шаг 4 — Package
 - Три карточки тарифов из `packs.ts`, вёрстка как на макете Pricing (средняя выделена: градиентная полоса и бейдж `MOST POPULAR`). В каждой: количество кадров, стилей, кредитов на правки, `4K · Commercial license · Likeness check`, цена.
 - Под карточками — выбор стилей: столько, сколько даёт тариф (для Executive — все, выбор скрыт). Стили превью уже отмечены.
-- Сводка справа (на mobile — внизу sticky): тариф, стили, цена, строка гарантии `Full refund until your first full-size download.` Кнопка `Continue to secure checkout →`.
+- Сводка справа (на mobile — внизу sticky): тариф, стили, цена, строка гарантии `Full refund until your first download.` Кнопка `Continue to secure checkout →`.
 - Mock: `BillingService.startCheckout` возвращает URL заглушки `/shoot/new?checkout=success&shoot=<id>`, затем шаг 5. Позже — Lemon Squeezy overlay checkout.
 
 ### Шаг 5 — Done / Generating
@@ -95,7 +95,7 @@
 - `Download` ▾ — `Original 4K (JPG)`, `LinkedIn (1:1, 1080px)`, `Resume (3:4)`, `Round avatar (PNG)`, `Website (16:9 with space)`. Кадрирование — на клиенте (canvas) от центра лица; детекция лица — тем же модулем, что и в selfie-check.
 - `★ Favorite`, `Edit in Studio →` (`/studio?photo=<id>`).
 
-**Гарантия**: до первого полноразмерного скачивания — плашка `Not happy? Request a full refund` → диалог (причина — необязательный select; mock: `refundEligibility` → `Refund requested`). После скачивания плашка исчезает.
+**Гарантия**: до первого скачивания любого кадра (любой формат или ZIP, M6) — плашка `Not happy? Request a full refund` → диалог (причина — необязательный select; mock: `refundEligibility` → `Refund requested`). Перед первым скачиванием — одноразовое подтверждение `Downloading ends your refund eligibility. Continue?` (`Download` / `Cancel`). После скачивания плашка исчезает.
 
 **Мои съёмки**: пункт `My Shoots` в меню аватара открывает dropdown-список (тариф, дата, превью-миниатюра) со ссылками на `/shoot/[id]`. Отдельной страницы-списка нет.
 

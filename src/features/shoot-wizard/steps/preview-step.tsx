@@ -32,7 +32,7 @@ export function PreviewStep({ shootId, onRetrySelfies, onContinue, onFailed }: {
         <h1 className="text-h1 text-text">{ready ? "Your free previews" : failed ? "We couldn't create your previews" : "Creating your previews…"}</h1>
         <p className="mt-2 text-[17px] leading-7 text-muted" aria-live="polite">
           {ready
-            ? "Watermarked 512 px previews in two styles. Your full set comes without the watermark."
+            ? "Free previews in two styles. Your full set comes in 4K, without the watermark."
             : failed
               ? "Something went wrong on our side. Your free preview wasn't used — you can try again." // TODO(owner): confirm copy
               : "This usually takes a few minutes. We'll also email you."}
@@ -79,11 +79,11 @@ export function PreviewStep({ shootId, onRetrySelfies, onContinue, onFailed }: {
           </p>
           <div className="flex flex-col gap-4 border-t border-border pt-6 sm:flex-row sm:items-start sm:justify-between">
             <div className="max-w-xl">
-              <button type="button" onClick={onRetrySelfies} className="text-[14px] font-semibold text-brand-text underline-offset-2 hover:underline">
+              <button type="button" onClick={onRetrySelfies} className="text-[14px] font-semibold text-text underline underline-offset-2 hover:text-muted">
                 Not quite you? Try different selfies
               </button>
               <p className="mt-1 text-small text-muted">
-                Your free preview has been used, but packages are fully refundable until your first full-size download.
+                Your free preview has been used, but packages are fully refundable until your first download.
               </p>
             </div>
             <Button variant="primary" size="lg" onClick={onContinue}>

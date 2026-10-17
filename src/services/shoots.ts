@@ -12,6 +12,8 @@ import type {
   Unsubscribe,
 } from "./types";
 
+export type DownloadFormat = "original" | "linkedin" | "resume" | "avatar" | "website" | "zip";
+
 export type DraftInput = { outfit?: OutfitChoice; glasses?: GlassesChoice; styleIds?: string[]; pack?: PackId };
 
 /** ShootsService — shoots, selfies, previews, photos (B2/B3). */
@@ -30,8 +32,8 @@ export interface ShootsService {
   getPhoto(photoId: string): Promise<ShootPhoto | null>;
   subscribe(shootId: string, listener: (update: ShootUpdate) => void): Unsubscribe;
   favorite(photoId: string, isFavorite: boolean): Promise<ShootPhoto>;
-  /** Records a full-size download (ends refund eligibility, M6) and returns a URL. */
-  download(photoIds: string[], format: "original" | "zip"): Promise<{ url: string }>;
+  /** Records a download — ANY format or ZIP ends refund eligibility (M6) — and returns a URL. */
+  download(photoIds: string[], format: DownloadFormat): Promise<{ url: string }>;
   rename(shootId: string, title: string): Promise<Shoot>;
   deleteNow(shootId: string): Promise<void>;
   refundEligibility(shootId: string): Promise<RefundEligibility>;

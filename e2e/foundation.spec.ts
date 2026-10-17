@@ -22,6 +22,7 @@ const publicRoutes: [string, RegExp][] = [
   ["/teams", /Consistent headshots for your whole team/],
   ["/privacy", /Privacy Policy/],
   ["/terms", /Terms of Service/],
+  ["/licenses", /Open-source licenses/],
   ["/login", /Welcome back/],
   ["/signup", /Create your account/],
   ["/forgot-password", /Forgot your password\?/],

@@ -28,6 +28,10 @@ test.describe("wizard /shoot/new", () => {
     await seed(page, "guest");
     await page.goto("/shoot/new");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Upload 4–8 selfies");
+    // Already in the wizard: no "get started" CTA in the header, only Log In (keeps the wizard as next).
+    const header = page.locator("header").first();
+    await expect(header.getByRole("link", { name: /Get your headshots|Get started/ })).toHaveCount(0);
+    await expect(header.getByRole("link", { name: "Log In" })).toHaveAttribute("href", "/login?next=%2Fshoot%2Fnew");
 
     // Step 1 — selfies are checked in the browser (real MediaPipe detector).
     await fileInput(page).setInputFiles([FIX("selfie-1.jpg"), FIX("selfie-2.jpg"), FIX("selfie-3.jpg"), FIX("selfie-4.jpg")]);
@@ -142,18 +146,22 @@ test.describe("shoot page /shoot/[id]", () => {
     await page.getByRole("button", { name: "All", exact: true }).click();
 
     await page.getByRole("button", { name: /Open photo 1,/ }).click();
-    const viewer = page.getByRole("dialog");
-    await expect(viewer.getByText("1 of 52")).toBeVisible();
+    const box = page.getByRole("dialog");
+    await expect(box.getByText("1 of 52")).toBeVisible();
     await page.keyboard.press("ArrowRight");
-    await expect(viewer.getByText("2 of 52")).toBeVisible();
-    await expect(viewer.getByRole("link", { name: /Edit in Studio/ })).toHaveAttribute("href", /\/studio\?photo=/);
+    await expect(box.getByText("2 of 52")).toBeVisible();
+    await expect(box.getByRole("link", { name: /Edit in Studio/ })).toHaveAttribute("href", /\/studio\?photo=/);
 
-    // Original 4K download → refund banner disappears (M6).
+    // Any download (here a LinkedIn crop) ends refund eligibility (M6) — confirmed once, first.
     await expect(page.getByText(/Request a full refund/)).toHaveCount(1);
+    const viewer = page.getByRole("dialog", { name: /1 of 52|2 of 52/ });
     await viewer.getByRole("button", { name: /Download/ }).click();
+    await page.getByRole("menuitem", { name: "LinkedIn (1:1, 1080px)" }).click();
+    const confirm = page.getByRole("dialog", { name: "Downloading ends your refund eligibility. Continue?" });
+    await expect(confirm).toBeVisible();
     const download = page.waitForEvent("download");
-    await page.getByRole("menuitem", { name: "Original 4K (JPG)" }).click();
-    expect((await download).suggestedFilename()).toMatch(/4k\.jpg$/);
+    await confirm.getByRole("button", { name: "Download" }).click();
+    expect((await download).suggestedFilename()).toMatch(/linkedin-1x1\.jpg$/);
     await viewer.getByRole("button", { name: "Close" }).click();
     await expect(viewer).toBeHidden();
     await expect(page.getByText(/Request a full refund/)).toHaveCount(0);
@@ -168,6 +176,17 @@ test.describe("shoot page /shoot/[id]", () => {
     await page.getByRole("menuitem", { name: "Delete now" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Delete now" }).click();
     await expect(page).toHaveURL(/\/shoot\/shoot_ess_1002$/);
+  });
+
+  test("ZIP asks for the refund confirmation first and can be cancelled", async ({ page, isMobile }) => {
+    test.skip(isMobile, "covered on desktop");
+    await seed(page, "has-shoot");
+    await page.goto("/shoot/shoot_pro_1017");
+    await page.getByRole("button", { name: /Download all \(ZIP\)/ }).click();
+    const confirm = page.getByRole("dialog", { name: "Downloading ends your refund eligibility. Continue?" });
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirm).toBeHidden();
+    await expect(page.getByText(/Request a full refund/)).toHaveCount(1);
   });
 
   test("refund request before any download", async ({ page }) => {

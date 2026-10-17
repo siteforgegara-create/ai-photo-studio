@@ -35,6 +35,8 @@ export type BeforeAfterProps = {
   rounded?: boolean;
   /** How both layers fill the frame (slider variant). `contain` never crops the photo. */
   fit?: "cover" | "contain";
+  /** Extra classes for the After layer (e.g. a checkerboard behind a transparent cut-out). */
+  afterLayerClassName?: string;
 };
 
 const clamp = (v: number, min = 0, max = 100) => Math.min(max, Math.max(min, v));
@@ -70,6 +72,7 @@ function SliderBeforeAfter({
   className,
   rounded = true,
   fit = "cover",
+  afterLayerClassName,
 }: BeforeAfterProps) {
   const [internal, setInternal] = React.useState(defaultSplit);
   const split = controlled ?? internal;
@@ -159,7 +162,7 @@ function SliderBeforeAfter({
           </div>
         </div>
         <div className="absolute inset-0 overflow-hidden" style={{ clipPath: `inset(0 0 0 ${split}%)` }}>
-          <div className="absolute inset-0" style={layerStyle} data-layer="after">
+          <div className={cn("absolute inset-0", afterLayerClassName)} style={layerStyle} data-layer="after">
             <Image src={after} alt="" fill sizes={sizes} priority={priority} className={fit === "contain" ? "object-contain" : "object-cover"} draggable={false} />
           </div>
         </div>

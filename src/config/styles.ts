@@ -26,7 +26,7 @@ const catalogue: Omit<ShootStyle, "previewImage">[] = [
   { id: "golden-hour", name: "Golden Hour", category: "Outdoor", description: "Warm late-afternoon light outdoors.", promptKey: null },
   { id: "minimal-beige", name: "Minimal Beige", category: "Studio", description: "Warm neutral backdrop, calm and modern.", promptKey: null },
   { id: "tech-startup", name: "Startup Casual", category: "Casual", description: "Relaxed, modern workspace look for founders and tech teams.", promptKey: null },
-  { id: "creative-color", name: "Creative Color", category: "Creative", description: "Bold coloured backdrop for creative professionals.", promptKey: null },
+  { id: "creative-color", name: "Creative Color", category: "Creative", description: "Bold colored backdrop for creative professionals.", promptKey: null },
 ];
 
 export const shootStyles: readonly ShootStyle[] = catalogue.map((s) => {

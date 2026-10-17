@@ -23,11 +23,11 @@ import {
 import { SegmentedThemeToggle } from "@/components/ui/segmented-theme-toggle";
 import { cn, formatDate } from "@/lib/utils";
 
-function shootLabel(shoot: Shoot) {
+export function shootLabel(shoot: Shoot) {
   return shoot.title ?? getShootPack(shoot.pack).name;
 }
 
-function shootMeta(shoot: Shoot) {
+export function shootMeta(shoot: Shoot) {
   if (shoot.status === "generating") return `Generating · ${shoot.readyCount} of ${shoot.targetCount}`;
   if (shoot.status === "refunded") return "Refunded";
   return formatDate(shoot.createdAt);
@@ -49,9 +49,12 @@ export function AccountMenu({ withTheme = false, showName = false }: { withTheme
     <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
       <DropdownMenuTrigger
         className="inline-flex h-10 items-center gap-2 rounded-full pr-1 pl-0.5 transition-colors hover:bg-surface-2 data-[state=open]:bg-surface-2"
-        aria-label={`Account menu for ${user.fullName}`}
       >
-        <Avatar name={user.fullName} />
+        {/* Name comes from content (not aria-label) so visible text stays part of it (WCAG 2.5.3). */}
+        <span aria-hidden="true">
+          <Avatar name={user.fullName} />
+        </span>
+        <span className="sr-only">Account menu for {user.fullName}</span>
         {showName && <span className="hidden text-[14px] font-semibold text-text xl:inline">{user.fullName.split(" ")[0]}</span>}
         <ChevronDown className="size-4 text-muted" aria-hidden="true" />
       </DropdownMenuTrigger>

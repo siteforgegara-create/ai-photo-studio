@@ -46,12 +46,14 @@ test("unknown route shows the 404 page", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Get your free preview" })).toBeVisible();
 });
 
-test("unknown use case renders the not-found page", async ({ page }) => {
-  // With Cache Components the first on-demand render may stream with HTTP 200;
-  // the not-found UI + noindex meta are what we guarantee (see reports/stage-1.md).
-  await page.goto("/headshots/astronauts");
+test("unknown use case is a strict 404 (src/proxy.ts)", async ({ page, request }) => {
+  for (const path of ["/headshots/astronauts", "/headshots/linkedin-extra", "/headshots"]) {
+    expect((await request.get(path)).status(), path).toBe(404);
+  }
+  expect((await request.get("/headshots/linkedin")).status()).toBe(200);
+  const res = await page.goto("/headshots/astronauts");
+  expect(res?.status()).toBe(404);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Page not found");
-  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/);
 });
 
 test("/credits redirects to /pricing#credits", async ({ page }) => {
@@ -128,7 +130,7 @@ test.describe("headers (V2)", () => {
     const header = page.locator("header").first();
     await expect(header.getByRole("link", { name: "Log In" })).toHaveCount(0);
     if (!isMobile) {
-      await expect(header.getByRole("link", { name: /30 edit credits/ })).toBeVisible();
+      await expect(header.getByRole("link", { name: /30 credits — buy more/ })).toBeVisible();
       await expect(header.getByRole("link", { name: /New shoot/ })).toBeVisible();
     }
     await header.getByRole("button", { name: /Account menu/ }).first().click();
@@ -143,7 +145,7 @@ test.describe("headers (V2)", () => {
     await page.goto("/studio");
     const header = page.locator("header").first();
     await expect(header.getByRole("link", { name: isMobile ? "Shoot" : "Back to shoot" })).toHaveAttribute("href", "/shoot/shoot_pro_1017");
-    await expect(header.getByRole("link", { name: /30 edit credits/ })).toBeVisible();
+    await expect(header.getByRole("link", { name: /30 credits — buy more/ })).toBeVisible();
     if (!isMobile) await expect(header.getByRole("link", { name: "Buy credits" })).toBeVisible();
   });
 

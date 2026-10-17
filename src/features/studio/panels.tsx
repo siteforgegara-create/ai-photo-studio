@@ -98,7 +98,7 @@ export function OptionsPanel({ demo, chips }: { demo: boolean; chips?: React.Rea
         <div className="flex items-center gap-3 rounded-[12px] border border-border bg-surface-2 p-3">
           <input id={`${textId}-color`} type="color" value={custom.color ?? "#1f4e79"} onChange={(e) => setCustom({ color: e.target.value })} className="size-10 cursor-pointer rounded-[8px] border border-border bg-transparent" />
           <Label htmlFor={`${textId}-color`} className="mb-0">
-            Brand colour <span className="font-normal text-muted">{custom.color ?? "#1f4e79"}</span>
+            Brand color <span className="font-normal text-muted">{custom.color ?? "#1f4e79"}</span>
           </Label>
         </div>
       )}

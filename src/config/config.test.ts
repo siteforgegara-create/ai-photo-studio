@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { creditPacks, editCostPerVariant, formatPrice, quoteEdit, shootPacks } from "./packs";
 import { editTools } from "./edit-tools";
 import { shootStyles } from "./styles";
-import { useCases } from "./use-cases";
+import { countUseCaseWords, useCases } from "./use-cases";
 import { allDemoAssets, demoManifest, getDemoPair } from "./demo-manifest";
 import { rejectReasons, selfieCheckConfig, selfieReasonCopy } from "./selfie-check";
 import { brand } from "./brand";
@@ -40,6 +40,18 @@ describe("catalogues", () => {
     expect(useCases.map((u) => u.slug)).toEqual(["linkedin", "resume", "real-estate-agents", "lawyers", "doctors", "speakers", "consultants"]);
     const ids = new Set(shootStyles.map((s) => s.id));
     for (const u of useCases) for (const s of u.recommendedStyles) expect(ids.has(s)).toBe(true);
+  });
+  it("every SEO page has ≥ 400 words, 3–5 tips, 3–4 FAQ and no invented stats (03-pages §3)", () => {
+    for (const u of useCases) {
+      expect(countUseCaseWords(u), u.slug).toBeGreaterThanOrEqual(400);
+      expect(u.tips.length).toBeGreaterThanOrEqual(3);
+      expect(u.tips.length).toBeLessThanOrEqual(5);
+      expect(u.faq.length).toBeGreaterThanOrEqual(3);
+      expect(u.faq.length).toBeLessThanOrEqual(4);
+      const text = JSON.stringify(u);
+      // CLAUDE.md §3.2: no percentages, ratings, user counts or generation times.
+      expect(text, u.slug).not.toMatch(/\d+\s?%|\b\d[\d,]*\+?\s?(users|customers|professionals|reviews)\b|★|\b\d+\s?(minutes?|seconds?)\b/i);
+    }
   });
   it("demo manifest only points at public/demo assets and styles that exist", () => {
     for (const a of allDemoAssets()) expect(a).toMatch(/^\/demo\/headshot\/[a-z]+\.webp$/);

@@ -14,5 +14,9 @@ export interface AuthService {
   requestPasswordReset(email: string): Promise<void>;
   resetPassword(token: string, newPassword: string): Promise<void>;
   updateProfile(input: { fullName: string }): Promise<User>;
+  /** Signed-in password change (Settings). Google-only accounts get `validation`. */
+  changePassword(currentPassword: string, newPassword: string): Promise<void>;
+  /** Deletes the account, all shoots, photos and the credit balance, then signs out (Settings). */
+  deleteAccount(): Promise<void>;
   onAuthStateChange(listener: (user: User | null) => void): Unsubscribe;
 }

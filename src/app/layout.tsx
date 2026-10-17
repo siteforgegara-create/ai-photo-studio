@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(brand.url),
   title: { default: `${brand.name} — ${brand.tagline}`, template: `%s · ${brand.name}` },
   description: brand.description,
+  applicationName: brand.name,
+  openGraph: { type: "website", siteName: brand.name, locale: "en_US" },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {

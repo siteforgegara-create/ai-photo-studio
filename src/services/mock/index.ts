@@ -86,6 +86,18 @@ export const mockAuth: AuthService = {
     if (token === "expired") throw new ServiceError("validation", "This reset link has expired.");
     if (newPassword.length < MIN_PASSWORD) throw new ServiceError("validation", "Password must be at least 8 characters.");
   },
+  async changePassword(currentPassword, newPassword) {
+    await delay();
+    const user = requireUser();
+    if (user.provider === "google") throw new ServiceError("validation", "You sign in with Google, so there's no password to change.");
+    if (currentPassword.length < MIN_PASSWORD) throw new ServiceError("invalid-credentials", "Your current password is incorrect.");
+    if (newPassword.length < MIN_PASSWORD) throw new ServiceError("validation", "Password must be at least 8 characters.");
+  },
+  async deleteAccount() {
+    await delay();
+    requireUser();
+    setScenario("guest");
+  },
   async updateProfile({ fullName }) {
     await delay();
     requireUser();
@@ -311,6 +323,16 @@ export const mockShoots: ShootsService = {
       d.selfies = d.selfies.filter((p) => p.shootId !== shootId);
     });
   },
+  async deleteAllPhotos() {
+    await delay();
+    requireUser();
+    updateDb((d) => {
+      d.shoots = [];
+      d.photos = [];
+      d.previews = [];
+      d.selfies = [];
+    });
+  },
   async refundEligibility(shootId) {
     await delay(0);
     const s = findShoot(shootId);
@@ -460,7 +482,24 @@ export const mockBilling: BillingService = {
       return { url: `/shoot/new?checkout=success&shoot=${encodeURIComponent(target.shootId)}` };
     }
     // TODO(B5): Lemon Squeezy overlay checkout for credit packs.
-    return { url: `/pricing?checkout=success&pack=${encodeURIComponent(target.creditPackId)}#credits` };
+    const pack = creditPacks.find((p) => p.id === target.creditPackId);
+    if (!pack) throw new ServiceError("not-found", "Unknown credit pack.");
+    return { url: `/pricing?checkout=success&ref=${encodeURIComponent(`${pack.id}~${newId("co")}`)}#credits` };
+  },
+  async confirmCreditPurchase(checkoutId) {
+    requireUser();
+    await delay();
+    const [packId] = checkoutId.split("~");
+    const pack = creditPacks.find((p) => p.id === packId);
+    if (!pack) throw new ServiceError("not-found", "We couldn't find this order.");
+    const entryId = `purchase_${checkoutId}`;
+    // Idempotent: reloading the return page doesn't add credits twice.
+    if (!getDb().ledger.some((e) => e.id === entryId)) {
+      updateDb((d) => {
+        d.ledger.push({ id: entryId, createdAt: nowIso(), label: `Credit pack · ${pack.credits} credits`, delta: pack.credits });
+      });
+    }
+    return { credits: pack.credits };
   },
 };
 

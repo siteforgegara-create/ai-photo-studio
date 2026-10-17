@@ -36,6 +36,8 @@ export interface ShootsService {
   download(photoIds: string[], format: DownloadFormat): Promise<{ url: string }>;
   rename(shootId: string, title: string): Promise<Shoot>;
   deleteNow(shootId: string): Promise<void>;
+  /** Settings → Privacy: deletes every shoot's photos, edits and selfies now. Credits stay (M8). */
+  deleteAllPhotos(): Promise<void>;
   refundEligibility(shootId: string): Promise<RefundEligibility>;
   requestRefund(shootId: string, reason?: string): Promise<Shoot>;
 }

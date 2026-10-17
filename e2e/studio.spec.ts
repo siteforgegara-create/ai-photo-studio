@@ -129,7 +129,7 @@ test.describe("Studio", () => {
     await expect(page.getByRole("tab", { name: "Edits" })).toHaveAttribute("aria-selected", "true", { timeout: 10_000 });
     await expect(page.getByRole("button", { name: /Edit 2/ })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByText("Edited", { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /28 edit credits/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /28 credits — buy more/ })).toBeVisible();
     const state = await db(page);
     expect(state.editJobs).toHaveLength(1);
   });
@@ -170,7 +170,7 @@ test.describe("Studio", () => {
     await page.getByRole("button", { name: "Generate · 2 credits" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Generate · 2 credits" }).click();
     await expect(alert(page)).toContainText("We couldn't complete this edit. Your credits were returned.", { timeout: 10_000 });
-    await expect(page.getByRole("link", { name: /30 edit credits/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /30 credits — buy more/ })).toBeVisible();
   });
 
   test("Crop & Export downloads a re-encoded file without EXIF", async ({ page }) => {

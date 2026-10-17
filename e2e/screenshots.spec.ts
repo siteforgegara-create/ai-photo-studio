@@ -196,6 +196,97 @@ const shots: Shot[] = [
       await page.waitForTimeout(400);
     },
   },
+  // Stage 4 — marketing, SEO, free tools, auth, settings.
+  { name: "pricing-signed-in", path: "/pricing", scenario: "has-shoot" },
+  ...["resume", "real-estate-agents", "lawyers", "doctors", "speakers", "consultants"].map((slug) => ({ name: `headshots-${slug}`, path: `/headshots/${slug}`, widths: [1440, 390] })),
+  {
+    name: "tools-background-remover-result",
+    path: "/tools/background-remover",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.locator('input[type="file"]').setInputFiles(path.join(__dirname, "..", "public", "demo", "headshot", "office.webp"));
+      await page.getByRole("button", { name: "Download PNG" }).and(page.locator(":enabled")).waitFor({ timeout: 90_000 });
+      await page.locator('[data-layer="after"] img').waitFor();
+      await page.waitForTimeout(500);
+    },
+  },
+  {
+    name: "tools-photo-editor-open",
+    path: "/tools/photo-editor",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.locator('input[type="file"]').setInputFiles(path.join(__dirname, "fixtures", "selfie-1.jpg"));
+      await page.getByRole("img", { name: "Photo being edited" }).waitFor();
+      await page.getByRole("button", { name: "Instagram 1080×1350" }).click();
+      await page.waitForTimeout(400);
+    },
+  },
+  {
+    name: "teams-joined",
+    path: "/teams",
+    widths: [1440, 390],
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.getByLabel("Work email").fill("lead@company.com");
+      await page.getByLabel("Team size").selectOption("11-50");
+      await page.getByRole("button", { name: "Join the waitlist" }).click();
+      await page.getByRole("status").waitFor();
+    },
+  },
+  {
+    name: "forgot-password-sent",
+    path: "/forgot-password",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.getByLabel("Email address").fill("you@example.com");
+      await page.getByRole("button", { name: /Send Reset Link/ }).click();
+      await page.getByRole("status").waitFor();
+    },
+  },
+  {
+    name: "reset-password-checks",
+    path: "/reset-password?token=abc",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.getByLabel("New password", { exact: true }).fill("longenough1");
+      await page.getByLabel("Confirm new password").fill("longenough1");
+    },
+  },
+  { name: "reset-password-expired", path: "/reset-password?token=expired", fullPage: false },
+  {
+    name: "settings-change-password",
+    path: "/settings",
+    scenario: "has-shoot",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.getByRole("button", { name: "Change password" }).click();
+      await page.getByRole("dialog").waitFor();
+      await page.waitForTimeout(250);
+    },
+  },
+  {
+    name: "settings-delete-photos",
+    path: "/settings",
+    scenario: "has-shoot",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.getByRole("button", { name: "Delete all my photos" }).click();
+      await page.getByRole("dialog").waitFor();
+      await page.waitForTimeout(250);
+    },
+  },
+  {
+    name: "settings-delete-account",
+    path: "/settings",
+    scenario: "has-shoot",
+    fullPage: false,
+    act: async (page: Page) => {
+      await page.getByRole("button", { name: "Delete account" }).click();
+      await page.getByRole("dialog").getByLabel(/Type DELETE/).fill("DELETE");
+      await page.waitForTimeout(250);
+    },
+  },
+  { name: "settings-new-user", path: "/settings", scenario: "new-user" },
   { name: "not-found", path: "/this-page-does-not-exist" },
   { name: "dev-ui", path: "/dev/ui" },
 ];

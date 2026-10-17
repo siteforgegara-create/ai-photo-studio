@@ -11,7 +11,7 @@ export function CreditsPill({ credits, className }: { credits: number; className
         "transition-colors duration-[120ms] hover:bg-surface-2",
         className,
       )}
-      aria-label={`${credits} edit credits — buy more`}
+      aria-label={`${credits} credits — buy more edit credits`}
     >
       <span className="size-2 rounded-full bg-brand-to" aria-hidden="true" />
       {credits} credits

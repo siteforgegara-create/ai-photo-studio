@@ -8,12 +8,13 @@ import { loginHref } from "@/lib/redirects";
 /** Client guard for signed-in pages (mock). B1 moves this to middleware + server checks. */
 export function RequireAuth({ children }: { children: React.ReactNode }) {
   const status = useSession((s) => s.status);
+  const leftOnPurpose = useSession((s) => s.leftOnPurpose);
   const router = useRouter();
   const pathname = usePathname();
 
   React.useEffect(() => {
-    if (status === "guest") router.replace(loginHref(pathname));
-  }, [status, router, pathname]);
+    if (status === "guest" && !leftOnPurpose) router.replace(loginHref(pathname));
+  }, [status, leftOnPurpose, router, pathname]);
 
   if (status !== "authenticated") {
     return (

@@ -15,6 +15,12 @@ type SessionState = {
   init: () => void;
   refresh: () => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Set when the user signs out or deletes the account on purpose, so guarded
+   * pages don't bounce them to /login while they are sent to the homepage.
+   */
+  leftOnPurpose: boolean;
+  markLeftOnPurpose: () => void;
 };
 
 let started = false;
@@ -24,6 +30,8 @@ export const useSession = create<SessionState>()((set, get) => ({
   user: null,
   credits: 0,
   shoots: [],
+  leftOnPurpose: false,
+  markLeftOnPurpose: () => set({ leftOnPurpose: true }),
   init: () => {
     if (started) return;
     started = true;
@@ -38,9 +46,10 @@ export const useSession = create<SessionState>()((set, get) => ({
       return;
     }
     const [{ credits }, shoots] = await Promise.all([creditsService.getBalance(), shootsService.list()]);
-    set({ status: "authenticated", user, credits, shoots });
+    set({ status: "authenticated", user, credits, shoots, leftOnPurpose: false });
   },
   signOut: async () => {
+    set({ leftOnPurpose: true });
     await authService.signOut();
     await get().refresh();
   },

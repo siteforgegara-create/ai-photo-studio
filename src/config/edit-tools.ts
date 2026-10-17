@@ -54,7 +54,7 @@ export const editTools: readonly EditTool[] = [
       { id: "brand", name: "Brand", options: [opt("solid-color", "Solid color", { kind: "color" })] },
     ],
     custom: { type: "text", maxLength: 300, label: "Describe your background" },
-    tips: ["Pick a backdrop that suits where the photo will be used — plain studio tones for CVs, an office or city for LinkedIn and websites.", "Brand colour works best when it is calm and not too saturated."],
+    tips: ["Pick a backdrop that suits where the photo will be used — plain studio tones for CVs, an office or city for LinkedIn and websites.", "Brand color works best when it is calm and not too saturated."],
   },
   {
     id: "outfit",
@@ -116,7 +116,7 @@ export const editTools: readonly EditTool[] = [
       },
     ],
     custom: { type: "text", maxLength: 300, label: "Describe your style" },
-    tips: ["Creative styles are for portfolios, speaker pages and social profiles rather than formal documents.", "Describe the mood you want in Custom — colours, light, era — rather than a specific person."],
+    tips: ["Creative styles are for portfolios, speaker pages and social profiles rather than formal documents.", "Describe the mood you want in Custom — colors, light, era — rather than a specific person."],
   },
   {
     id: "place",

@@ -12,7 +12,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "screenshots": "playwright test --config=playwright.screenshots.config.ts",
-    "postinstall": "node scripts/copy-mediapipe-wasm.mjs"
+    "postinstall": "node scripts/copy-vendor-wasm.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -26,6 +26,7 @@
     "motion": "^14.3.0",
     "next": "16.4.2",
     "next-themes": "^0.4.6",
+    "onnxruntime-web": "1.30.0",
     "radix-ui": "^1.8.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
@@ -36,6 +37,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
     "@mediapipe/face_detection": "^0.4.1646425229",
     "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",

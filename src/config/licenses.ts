@@ -35,6 +35,21 @@ export const notableLicenses: readonly LicenseEntry[] = [
     sourceUrl: "https://github.com/google-ai-edge/mediapipe",
   },
   {
+    name: "MODNet portrait matting model",
+    usedFor: "Background remover — separates the person from the background in your browser",
+    license: "Apache License 2.0",
+    licenseUrl: "https://www.apache.org/licenses/LICENSE-2.0",
+    sourceUrl: "https://github.com/ZHKKKe/MODNet",
+    note: "Pretrained photographic portrait matting model, converted to ONNX; weights are stored at half precision, unchanged otherwise.",
+  },
+  {
+    name: "ONNX Runtime Web",
+    usedFor: "Runs the background remover model in your browser (WebAssembly)",
+    license: "MIT",
+    licenseUrl: "https://github.com/microsoft/onnxruntime/blob/main/LICENSE",
+    sourceUrl: "https://github.com/microsoft/onnxruntime",
+  },
+  {
     name: "heic2any",
     usedFor: "Converting iPhone HEIC photos to JPEG in your browser",
     license: "MIT",

@@ -135,7 +135,8 @@ test.describe("headers (V2)", () => {
     }
     await header.getByRole("button", { name: /Account menu/ }).first().click();
     for (const name of ["Studio", "Account Settings", "Buy credits", "Sign out"]) await expect(page.getByRole("menuitem", { name })).toBeVisible();
-    await page.getByRole("menuitem", { name: /My Shoots/ }).click();
+    // Desktop: My Shoots is a submenu; phones list the shoots inline (no room for a side menu at 360 px).
+    if (!isMobile) await page.getByRole("menuitem", { name: /My Shoots/ }).click();
     await page.getByRole("menuitem", { name: /Essential/ }).click();
     await expect(page).toHaveURL(/\/shoot\/shoot_ess_1002$/);
   });

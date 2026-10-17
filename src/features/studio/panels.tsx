@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { scrollBehavior } from "@/lib/motion";
 import Link from "next/link";
 import { ArrowRight, Download, ImageUp, Lightbulb, Loader2, Star, X } from "lucide-react";
 import { getStyle } from "@/config/styles";
@@ -419,5 +420,5 @@ function Empty({ title, hint, children }: { title: string; hint: string; childre
 /** Mobile: once the on-screen keyboard has opened, scroll the focused Custom field back into view (02-studio §6). */
 function keepInView(e: React.FocusEvent<HTMLElement>) {
   const el = e.currentTarget;
-  window.setTimeout(() => el.scrollIntoView({ block: "center", behavior: "smooth" }), 300);
+  window.setTimeout(() => el.scrollIntoView({ block: "center", behavior: scrollBehavior() }), 300);
 }

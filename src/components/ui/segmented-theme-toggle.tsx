@@ -62,7 +62,7 @@ export function SegmentedThemeToggle({ className, size = "md" }: { className?: s
         )}
       >
         <Sun aria-hidden="true" />
-        Light
+        <span className="max-[399px]:sr-only">Light</span>
       </button>
       <button
         type="button"
@@ -73,7 +73,7 @@ export function SegmentedThemeToggle({ className, size = "md" }: { className?: s
         className={cn(segment, "text-muted hover:text-text", "[html.dark_&]:bg-surface [html.dark_&]:text-text [html.dark_&]:ring-1 [html.dark_&]:ring-border")}
       >
         <Moon aria-hidden="true" />
-        Dark
+        <span className="max-[399px]:sr-only">Dark</span>
       </button>
     </div>
   );

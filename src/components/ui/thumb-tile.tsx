@@ -45,9 +45,10 @@ export function ThumbTile({ src, alt, label, meta, selected = false, badge, plac
         )}
         {badge && <span className="absolute top-2 right-2">{badge}</span>}
       </span>
-      <span className="flex items-center justify-between gap-2 px-2.5 py-2">
-        <span className="truncate text-[13px] leading-[18px] font-semibold text-text">{label}</span>
-        {meta && <span className="shrink-0 text-[12px] leading-4 text-muted">{meta}</span>}
+      {/* Names wrap (max two lines) instead of being cut with an ellipsis on narrow tiles; meta sits underneath. */}
+      <span className="flex flex-col gap-0.5 px-2.5 py-2">
+        <span className="line-clamp-2 text-[13px] leading-[18px] font-semibold break-words text-text">{label}</span>
+        {meta && <span className="text-[12px] leading-4 text-muted">{meta}</span>}
       </span>
     </button>
   );

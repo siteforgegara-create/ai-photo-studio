@@ -7,7 +7,7 @@ import { makePhotos, seedScenario, type MockDb, type ScenarioId } from "../src/s
  * (Studio also 1024). Output: screenshots/stage-$STAGE/<name>--<theme>--<width>.png
  */
 const STAGE = process.env.STAGE ?? "1";
-const OUT = path.join("screenshots", `stage-${STAGE}`);
+const OUT = path.join("screenshots", STAGE === "final" ? "final" : `stage-${STAGE}`);
 
 type Shot = {
   name: string;
@@ -55,9 +55,9 @@ const shots: Shot[] = [
     path: "/",
     scenario: "has-shoot",
     fullPage: false,
-    act: async (page) => {
+    act: async (page, width) => {
       await page.getByRole("button", { name: /account menu/i }).first().click();
-      await page.getByRole("menuitem", { name: /my shoots/i }).click();
+      if (width >= 768) await page.getByRole("menuitem", { name: /my shoots/i }).click();
       await page.getByRole("menuitem", { name: /essential/i }).waitFor();
     },
   },
@@ -90,6 +90,7 @@ const shots: Shot[] = [
   { name: "settings", path: "/settings", scenario: "has-shoot" },
   { name: "privacy", path: "/privacy" },
   { name: "terms", path: "/terms" },
+  { name: "licenses", path: "/licenses" },
   { name: "login", path: "/login" },
   { name: "signup", path: "/signup" },
   { name: "forgot-password", path: "/forgot-password" },
@@ -288,12 +289,14 @@ const shots: Shot[] = [
   },
   { name: "settings-new-user", path: "/settings", scenario: "new-user" },
   { name: "not-found", path: "/this-page-does-not-exist" },
-  { name: "dev-ui", path: "/dev/ui" },
+  { name: "dev-ui", path: "/dev/ui" }, // dev-only gallery: no 360 shot (see the final-set rule below)
 ];
 
 for (const shot of shots) {
   for (const theme of ["light", "dark"] as const) {
-    for (const width of shot.widths ?? BASE_WIDTHS) {
+    // The final set (Stage 5) adds 360 px — the narrowest common Android width — to every screen that has a mobile shot.
+    const widths = shot.widths ?? BASE_WIDTHS;
+    for (const width of STAGE === "final" && widths.includes(390) && shot.name !== "dev-ui" ? [...widths, 360] : widths) {
       test(`${shot.name} · ${theme} · ${width}`, async ({ page }) => {
         await page.setViewportSize({ width, height: shot.height ?? (width < 768 ? 844 : 900) });
         const db = shot.db ? shot.db() : seedScenario(shot.scenario ?? "guest");

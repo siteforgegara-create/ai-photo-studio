@@ -38,7 +38,7 @@ export function Logo({
   const content = (
     <>
       <LogoMark className={size === "sm" ? "size-8" : undefined} />
-      <span className={cn("font-extrabold tracking-[-0.02em] text-text", size === "sm" ? "text-[17px]" : "text-[20px]", compact && "sr-only")}>
+      <span className={cn("font-extrabold tracking-[-0.02em] whitespace-nowrap text-text", size === "sm" ? "text-[17px]" : "text-[20px]", compact && "sr-only")}>
         {brand.name}
       </span>
     </>

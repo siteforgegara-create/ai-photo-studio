@@ -98,7 +98,7 @@
   --color-overlay-chip: var(--overlay-chip);
   --color-scrim: var(--scrim);
 
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), var(--font-inter-ext), ui-sans-serif, system-ui, sans-serif;
 
   --radius-card: 16px;
   --radius-control: 10px;
@@ -234,11 +234,13 @@
  * moment by the theme toggle, so normal hovers keep their own timing and
  * images never animate.
  */
-html.theme-transition,
-html.theme-transition *:not(img):not(picture):not(video) {
-  transition-property: background-color, border-color, color, fill, stroke !important;
-  transition-duration: 180ms !important;
-  transition-timing-function: ease-out !important;
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transition,
+  html.theme-transition *:not(img):not(picture):not(video) {
+    transition-property: background-color, border-color, color, fill, stroke !important;
+    transition-duration: 180ms !important;
+    transition-timing-function: ease-out !important;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -76,7 +76,10 @@ export default function PricingPage() {
         </ul>
       </section>
 
-      <section className="mt-14 grid gap-6 md:grid-cols-3" aria-label="Shoot packages">
+      <section className="mt-14 grid gap-6 md:grid-cols-3" aria-labelledby="packages-title">
+        <h2 id="packages-title" className="sr-only">
+          Shoot packages
+        </h2>
         {shootPacks.map((pack) => (
           <PackCard
             key={pack.id}

@@ -79,12 +79,12 @@ export function ToolStrip({ active, onSelect }: Props) {
                 aria-current={selected ? "true" : undefined}
                 onClick={() => onSelect(t.id)}
                 className={cn(
-                  "flex h-[76px] w-[92px] flex-col items-center justify-center gap-1 rounded-[12px] border bg-surface px-1 text-center transition-colors",
+                  "flex h-[84px] w-[92px] flex-col items-center justify-center gap-1 rounded-[12px] border bg-surface px-1 text-center transition-colors",
                   selected ? "border-brand bg-brand-soft" : "border-border",
                 )}
               >
                 <t.icon className={cn("size-5", selected ? "text-brand" : "text-muted")} aria-hidden="true" />
-                <span className={cn("w-full truncate text-[12px] font-semibold", selected ? "text-brand-text" : "text-text")}>{t.name}</span>
+                <span className={cn("line-clamp-2 w-full text-[12px] leading-[14px] font-semibold", selected ? "text-brand-text" : "text-text")}>{t.name}</span>
                 <span className="text-[10px] font-medium text-muted">{formatToolPrice(t.pricePerVariant)}</span>
               </button>
             </li>

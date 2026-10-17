@@ -34,7 +34,7 @@ export function PreviewStep({ shootId, onRetrySelfies, onContinue, onFailed }: {
           {ready
             ? "Free previews in two styles. Your full set comes in 4K, without the watermark."
             : failed
-              ? "Something went wrong on our side. Your free preview wasn't used — you can try again." // TODO(owner): confirm copy
+              ? "Something went wrong on our side. Your free preview wasn't used — you can try again." // copy approved after Stage 2
               : "This usually takes a few minutes. We'll also email you."}
         </p>
       </header>
@@ -55,12 +55,13 @@ export function PreviewStep({ shootId, onRetrySelfies, onContinue, onFailed }: {
                   type="button"
                   onClick={() => setOpen(i)}
                   className="group relative block aspect-[4/5] w-full overflow-hidden rounded-[12px] border border-border bg-surface-2 animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
-                  aria-label={`Open preview ${i + 1} — ${getStyle((p as Preview).styleId)?.name ?? ""}`}
                   onContextMenu={(e) => e.preventDefault()}
                 >
                   <Image src={(p as Preview).url} alt="" fill sizes="(min-width: 1024px) 280px, 45vw" className="object-cover" draggable={false} />
                   <Watermark />
+                  {/* Name from content (no aria-label) so the visible style name is part of it (WCAG 2.5.3). */}
                   <span className="absolute bottom-2 left-2 rounded-[6px] bg-overlay-chip px-2 py-0.5 text-[12px] font-semibold text-white">
+                    <span className="sr-only">Open preview {i + 1} — </span>
                     {getStyle((p as Preview).styleId)?.name}
                   </span>
                 </button>

@@ -1,10 +1,19 @@
 "use client";
 
+import { useBreakpoint } from "@/hooks/use-breakpoint";
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Coins, Images, LogOut, Plus, Settings, Sparkles } from "lucide-react";
+import {
+  ChevronDown,
+  Coins,
+  Images,
+  LogOut,
+  Plus,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import { getShootPack } from "@/config/packs";
 import { useSession } from "@/stores/session";
 import type { Shoot } from "@/services/types";
@@ -28,7 +37,8 @@ export function shootLabel(shoot: Shoot) {
 }
 
 export function shootMeta(shoot: Shoot) {
-  if (shoot.status === "generating") return `Generating · ${shoot.readyCount} of ${shoot.targetCount}`;
+  if (shoot.status === "generating")
+    return `Generating · ${shoot.readyCount} of ${shoot.targetCount}`;
   if (shoot.status === "refunded") return "Refunded";
   return formatDate(shoot.createdAt);
 }
@@ -39,70 +49,112 @@ export function shootMeta(shoot: Shoot) {
  * Buy credits, Sign out. `withTheme` adds the theme toggle for compact
  * headers where it doesn't fit in the bar.
  */
-export function AccountMenu({ withTheme = false, showName = false }: { withTheme?: boolean; showName?: boolean }) {
+export function AccountMenu({
+  withTheme = false,
+  showName = false,
+}: {
+  withTheme?: boolean;
+  showName?: boolean;
+}) {
   const { user, shoots, signOut } = useSession();
   const router = useRouter();
   const [open, setOpen] = React.useState(false);
+  const inlineShoots = useBreakpoint() === "mobile";
   if (!user) return null;
+
+  const shootItems =
+    shoots.length === 0 ? (
+      <div className="px-2.5 pb-2">
+        <p className="text-[13px] text-muted">No shoots yet.</p>
+        <DropdownMenuItem asChild className="mt-1">
+          <Link href="/shoot/new">
+            <Plus aria-hidden="true" />
+            Start a new shoot
+          </Link>
+        </DropdownMenuItem>
+      </div>
+    ) : (
+      shoots.map((shoot) => (
+        <DropdownMenuItem key={shoot.id} asChild>
+          <Link href={`/shoot/${shoot.id}`} className="gap-3">
+            <span className="relative size-10 shrink-0 overflow-hidden rounded-[8px] bg-surface-2">
+              {shoot.coverUrl && (
+                <Image
+                  src={shoot.coverUrl}
+                  alt=""
+                  fill
+                  sizes="40px"
+                  className="object-cover"
+                />
+              )}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[14px] font-semibold text-text">
+                {shootLabel(shoot)}
+              </span>
+              <span className="block truncate text-[12px] text-muted">
+                {shootMeta(shoot)}
+              </span>
+            </span>
+          </Link>
+        </DropdownMenuItem>
+      ))
+    );
 
   return (
     <DropdownMenu open={open} onOpenChange={setOpen} modal={false}>
-      <DropdownMenuTrigger
-        className="inline-flex h-10 items-center gap-2 rounded-full pr-1 pl-0.5 transition-colors hover:bg-surface-2 data-[state=open]:bg-surface-2"
-      >
+      <DropdownMenuTrigger className="inline-flex h-10 items-center gap-2 rounded-full pr-1 pl-0.5 transition-colors hover:bg-surface-2 data-[state=open]:bg-surface-2">
         {/* Name comes from content (not aria-label) so visible text stays part of it (WCAG 2.5.3). */}
         <span aria-hidden="true">
           <Avatar name={user.fullName} />
         </span>
         <span className="sr-only">Account menu for {user.fullName}</span>
-        {showName && <span className="hidden text-[14px] font-semibold text-text xl:inline">{user.fullName.split(" ")[0]}</span>}
+        {showName && (
+          <span className="hidden text-[14px] font-semibold text-text xl:inline">
+            {user.fullName.split(" ")[0]}
+          </span>
+        )}
         <ChevronDown className="size-4 text-muted" aria-hidden="true" />
       </DropdownMenuTrigger>
       <DropdownMenuContent className="w-72">
         <div className="flex items-center gap-3 px-2.5 py-2">
           <Avatar name={user.fullName} size={40} />
           <div className="min-w-0">
-            <p className="truncate text-[14px] font-semibold text-text">{user.fullName}</p>
+            <p className="truncate text-[14px] font-semibold text-text">
+              {user.fullName}
+            </p>
             <p className="truncate text-[13px] text-muted">{user.email}</p>
           </div>
         </div>
         <DropdownMenuSeparator />
 
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>
-            <Images aria-hidden="true" />
-            <span className="flex-1">My Shoots</span>
-            <span className="rounded-full bg-surface-2 px-2 text-[12px] font-semibold text-muted">{shoots.length}</span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-72">
-            <DropdownMenuLabel>My Shoots</DropdownMenuLabel>
-            {shoots.length === 0 ? (
-              <div className="px-2.5 pb-2">
-                <p className="text-[13px] text-muted">No shoots yet.</p>
-                <DropdownMenuItem asChild className="mt-1">
-                  <Link href="/shoot/new">
-                    <Plus aria-hidden="true" />
-                    Start a new shoot
-                  </Link>
-                </DropdownMenuItem>
-              </div>
-            ) : (
-              shoots.map((shoot) => (
-                <DropdownMenuItem key={shoot.id} asChild>
-                  <Link href={`/shoot/${shoot.id}`} className="gap-3">
-                    <span className="relative size-10 shrink-0 overflow-hidden rounded-[8px] bg-surface-2">
-                      {shoot.coverUrl && <Image src={shoot.coverUrl} alt="" fill sizes="40px" className="object-cover" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-semibold text-text">{shootLabel(shoot)}</span>
-                      <span className="block truncate text-[12px] text-muted">{shootMeta(shoot)}</span>
-                    </span>
-                  </Link>
-                </DropdownMenuItem>
-              ))
-            )}
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
+        {inlineShoots ? (
+          // Phones: no room for a side submenu at 360 px, so shoots are listed inline.
+          <>
+            <DropdownMenuLabel className="flex items-center justify-between">
+              My Shoots
+              <span className="rounded-full bg-surface-2 px-2 text-[12px] font-semibold text-muted">
+                {shoots.length}
+              </span>
+            </DropdownMenuLabel>
+            {shootItems}
+            <DropdownMenuSeparator />
+          </>
+        ) : (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Images aria-hidden="true" />
+              <span className="flex-1">My Shoots</span>
+              <span className="rounded-full bg-surface-2 px-2 text-[12px] font-semibold text-muted">
+                {shoots.length}
+              </span>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-72">
+              <DropdownMenuLabel>My Shoots</DropdownMenuLabel>
+              {shootItems}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
 
         <DropdownMenuItem asChild>
           <Link href="/studio">

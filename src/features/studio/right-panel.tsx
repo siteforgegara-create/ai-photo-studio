@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { Dialog as Primitive } from "radix-ui";
-import { motion, useDragControls, useReducedMotion, type PanInfo } from "motion/react";
+import { useDragControls, useReducedMotion, type PanInfo } from "motion/react";
+import * as m from "motion/react-m";
 import { ChevronLeft, ChevronRight, Images, Layers, SlidersHorizontal, Wrench, X } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -100,7 +101,7 @@ export function TabletDrawer({ slots, open, onOpenChange }: { slots: PanelSlots;
             returnTo.current?.focus();
           }}
         >
-          <motion.aside
+          <m.aside
             initial={reduce ? false : { x: 340 }}
             animate={{ x: 0 }}
             transition={{ duration: 0.24, ease: [0.22, 0.8, 0.25, 1] }}
@@ -115,7 +116,7 @@ export function TabletDrawer({ slots, open, onOpenChange }: { slots: PanelSlots;
                 </Primitive.Close>
               }
             />
-          </motion.aside>
+          </m.aside>
         </Primitive.Content>
       </Primitive.Portal>
     </Primitive.Root>
@@ -192,7 +193,7 @@ export function MobilePanel({ slots, onTools }: { slots: PanelSlots; onTools: ()
               opener.current?.focus();
             }}
           >
-            <motion.div
+            <m.div
               initial={reduce ? false : { y: "100%" }}
               animate={{ y: 0 }}
               transition={{ type: "spring", duration: 0.26, bounce: 0 }}
@@ -215,7 +216,7 @@ export function MobilePanel({ slots, onTools }: { slots: PanelSlots; onTools: ()
                 </Primitive.Close>
               </div>
               <PanelTabs slots={slots} className="min-h-0" />
-            </motion.div>
+            </m.div>
           </Primitive.Content>
         </Primitive.Portal>
       </Primitive.Root>

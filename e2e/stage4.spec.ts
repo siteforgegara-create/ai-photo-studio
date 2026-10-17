@@ -151,7 +151,7 @@ test.describe("marketing", () => {
     await expect(page.getByRole("radio", { name: "City Bokeh" })).toHaveAttribute("aria-checked", "true");
     await expect(page.locator("figure").first().getByText("City Bokeh", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "Outfit", exact: true })).toHaveAttribute("aria-disabled", "true");
-    await page.getByRole("button", { name: "What if I'm not happy?" }).click();
+    await page.locator("summary", { hasText: "What if I'm not happy?" }).click();
     await expect(page.getByText("You get a full refund until your first download.").first()).toBeVisible();
   });
 

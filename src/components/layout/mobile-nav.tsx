@@ -3,7 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { Dialog as Primitive } from "radix-ui";
-import { motion, useReducedMotion } from "motion/react";
+import { useReducedMotion } from "motion/react";
+import * as m from "motion/react-m";
 import { ArrowRight, Plus, X } from "lucide-react";
 import { useSession } from "@/stores/session";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,7 @@ export function MobileNav({ trigger }: { trigger: React.ReactNode }) {
       <Primitive.Portal>
         <Primitive.Overlay className="fixed inset-0 z-50 bg-scrim data-[state=open]:animate-in data-[state=open]:fade-in-0" />
         <Primitive.Content asChild aria-describedby={undefined}>
-          <motion.div
+          <m.div
             initial={reduce ? false : { x: "100%" }}
             animate={{ x: 0 }}
             transition={{ type: "spring", duration: 0.26, bounce: 0 }}
@@ -94,7 +95,7 @@ export function MobileNav({ trigger }: { trigger: React.ReactNode }) {
                 </>
               )}
             </div>
-          </motion.div>
+          </m.div>
         </Primitive.Content>
       </Primitive.Portal>
     </Primitive.Root>

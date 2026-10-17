@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { scrollBehavior } from "@/lib/motion";
 import { useSearchParams } from "next/navigation";
 import { alwaysConfirmAboveCredits } from "@/config/packs";
 import { shootsService, type EditToolId, type ShootPhoto } from "@/services";
@@ -165,7 +166,7 @@ export function StudioShell() {
           </div>
           <MobilePanel
             slots={slots}
-            onTools={() => toolsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            onTools={() => toolsRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "start" })}
           />
         </>
       )}

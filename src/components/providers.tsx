@@ -2,9 +2,11 @@
 
 import * as React from "react";
 import { ThemeProvider } from "next-themes";
-import { MotionConfig } from "motion/react";
+import { LazyMotion, MotionConfig } from "motion/react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useSession } from "@/stores/session";
+
+const loadMotionFeatures = () => import("@/lib/motion-features").then((m) => m.default);
 
 function SessionBootstrap() {
   const init = useSession((s) => s.init);
@@ -16,12 +18,15 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="aps-theme" disableTransitionOnChange>
       {/* `reducedMotion="user"` makes every Motion animation instant under prefers-reduced-motion. */}
-      <MotionConfig reducedMotion="user">
-        <TooltipProvider delayDuration={300}>
-          <SessionBootstrap />
-          {children}
-        </TooltipProvider>
-      </MotionConfig>
+      {/* LazyMotion + `m.*` components: Motion's features load on demand, `strict` forbids the heavy `motion.*`. */}
+      <LazyMotion features={loadMotionFeatures} strict>
+        <MotionConfig reducedMotion="user">
+          <TooltipProvider delayDuration={300}>
+            <SessionBootstrap />
+            {children}
+          </TooltipProvider>
+        </MotionConfig>
+      </LazyMotion>
     </ThemeProvider>
   );
 }

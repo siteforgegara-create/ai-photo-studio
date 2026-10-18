@@ -8,14 +8,16 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
-import { formatUsd } from "./lib/cost";
+import { ABLATION, ANALYZE, COST_SAFETY_FACTOR, FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
+import { accuracyTable, attributesLine, type AccuracyRow, type AttributeTruth } from "./lib/attributes";
+import { readAttributes } from "./lib/plans";
+import { effectiveSpent, formatUsd } from "./lib/cost";
 import { fail, parseCommonArgs } from "./lib/cli";
 import { loadLedger } from "./lib/ledger";
 import { readLog } from "./lib/log";
 import { resolveRunId, runDir } from "./lib/paths";
 import { allStats, joinRows, percentile, pickForEdits, rankForShoot, recommendThreshold, thresholdTable, type ModelStats, type Row } from "./lib/report-calc";
-import { readSubjectsMeta } from "./lib/subjects";
+import { readSubjectsMeta, truthFor } from "./lib/subjects";
 import type { RatingsFile, ReviewKey, ScoresFile } from "./lib/types";
 
 const args = parseCommonArgs();
@@ -37,7 +39,7 @@ const meta = new Map(readSubjectsMeta().map((m) => [m.id, m]));
 const rows = joinRows(scores.frames, ratings, key, meta);
 const ratedCount = rows.filter((r) => r.rating?.similarity).length;
 
-const label = (m: string) => (m === "lora" ? LORA.label : (MODELS as Record<string, { label: string }>)[m]?.label ?? m);
+const label = (m: string) => (m === "lora" ? LORA.label : m === ABLATION.key ? ABLATION.label : (MODELS as Record<string, { label: string }>)[m]?.label ?? m);
 const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
 const num = (v: number | null, d = 2) => (v === null ? "—" : v.toFixed(d));
 const usd = (v: number | null) => (v === null ? "—" : formatUsd(v));
@@ -81,8 +83,57 @@ function gallery(model: string): string {
 const stats = allStats(rows);
 const real = allStats(rows.filter((r) => r.subjectType === "real"));
 const synth = allStats(rows.filter((r) => r.subjectType === "synth"));
-const ranking = rankForShoot(real.some((s) => s.frames) ? real : stats);
-const edits = pickForEdits(real.some((s) => s.rated) ? real : stats);
+// The ablation group is a control, not a candidate: it never wins the recommendation.
+const candidates = (list: ModelStats[]) => list.filter((s) => s.model !== ABLATION.key);
+const ranking = rankForShoot(candidates(real.some((s) => s.frames) ? real : stats));
+const edits = pickForEdits(candidates(real.some((s) => s.rated) ? real : stats));
+
+// Attributes (bench:analyze) and their accuracy on the personas.
+const attrFiles = scores.subjects.map((s) => readAttributes(runId, s.id)).filter((a): a is NonNullable<typeof a> => Boolean(a));
+const truths = new Map<string, AttributeTruth>();
+for (const s of scores.subjects) if (s.type === "synth") {
+  const t = truthFor(s.id);
+  if (t) truths.set(s.id, t);
+}
+const accuracy: AccuracyRow[] = accuracyTable(attrFiles.filter((a) => truths.has(a.subject)), truths);
+const ATTR_LABEL: Record<string, string> = { eyeColor: "Цвет глаз", hairColor: "Цвет волос", hairLength: "Длина волос", hairTexture: "Текстура волос", skinTone: "Тон кожи", freckles: "Веснушки", glasses: "Очки", facialHair: "Растительность на лице" };
+function accuracySection(): string {
+  if (!attrFiles.length) return "_bench:analyze не запускался — признаков нет._";
+  const perSubject = attrFiles.map((a) => `| ${a.subject} | ${a.analyzed}/${a.selfies} | ${attributesLine(a).replace(/\|/g, "/")} | ${a.dropped.map((d) => d.key).join(", ") || "—"} |`).join("\n");
+  const acc = accuracy.filter((r) => r.compared);
+  const accTable = acc.length
+    ? `| Признак | Верно | Сравнено | Отброшено (< 60%) | Ошибки |\n|---|---|---|---|---|\n${acc.map((r) => `| ${ATTR_LABEL[r.key] ?? r.key} | ${r.correct} | ${r.compared} | ${r.dropped} | ${r.wrong.map((w) => `${w.subject}: ${w.truth} → ${w.got}`).join("; ") || "—"} |`).join("\n")}\n\nИтого верно: ${acc.reduce((a, r) => a + r.correct, 0)} из ${acc.reduce((a, r) => a + r.compared, 0)} сравнений.`
+    : "_Для synth-* нет поля truth в subjects.json._";
+  return `Модель: ${ANALYZE.model} через ${ANALYZE.endpoint}, каждое селфи отдельно, голосование большинством, порог согласия 60%. Только видимые признаки — раса, этническое происхождение и возраст числом не определяются и не записываются.
+
+| Участник | Селфи прочитано | Строка в промпте | Отброшено |
+|---|---|---|---|
+${perSubject}
+
+### Точность на синтетических персонажах (сравнение с truth)
+
+${accTable}`;
+}
+
+// Ablation: nb21 with vs without the attribute line, on the same subjects.
+function ablationSection(): string {
+  const noattr = rows.filter((r) => r.model === ABLATION.key);
+  if (!noattr.length) return "_Группа nb21-noattr не генерировалась._";
+  const subjectsAbl = [...new Set(noattr.map((r) => r.subject))].sort();
+  const withAttr = rows.filter((r) => r.model === ABLATION.baseModel && subjectsAbl.includes(r.subject));
+  const both = allStats([...withAttr, ...noattr]);
+  const a = both.find((s) => s.model === ABLATION.baseModel);
+  const b = both.find((s) => s.model === ABLATION.key);
+  const line = (s: ModelStats | undefined) => (s ? `| ${label(s.model)} | ${s.frames} | ${num(s.autoSimilarity, 3)} | ${s.rated} | ${num(s.manualSimilarity)} | ${num(s.manualQuality)} | ${pct(s.sellableShare)} |` : "");
+  return `Те же участники (${subjectsAbl.join(", ")}), та же модель, те же сиды — разница только в строке «Subject details».
+
+| Вариант | Кадров | Автосходство | Оценено | Сходство 1–5 | Качество 1–5 | Годных |
+|---|---|---|---|---|---|---|
+${line(a)}
+${line(b)}
+
+${a && b && a.manualSimilarity !== null && b.manualSimilarity !== null ? `Строка признаков ${a.manualSimilarity > b.manualSimilarity ? "**улучшила**" : a.manualSimilarity < b.manualSimilarity ? "**ухудшила**" : "не изменила"} ручное сходство: ${num(a.manualSimilarity)} против ${num(b.manualSimilarity)}. Выборка маленькая (${noattr.length} кадров) — это ориентир, не доказательство.` : "_Нужны ручные оценки обеих групп._"}`;
+}
 const threshold = recommendThreshold(rows);
 const thresholds = thresholdTable(rows, [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]);
 const ledger = loadLedger();
@@ -97,7 +148,7 @@ const md = `# B0 — отчёт бенчмарка (${runId})
 
 - Участники: ${scores.subjects.map((s) => `${s.id} (${s.type})`).join(", ")}
 - Кадров: ${rows.length} · оценено вслепую: ${ratedCount}${ratings?.rater ? ` (оценщик: ${ratings.rater})` : ""}${ratedCount ? "" : " — **ratings.json ещё нет: решающей метрики нет, выводы ниже только по автометрикам**"}
-- Расход (все прогоны B0): ${formatUsd(ledger.spentUsd)} из ${formatUsd(SPEND_CEILING_USD)}
+- Расход (все прогоны B0): насчитано ${formatUsd(ledger.spentUsd)} по прайсу${ledger.reconciled ? `, по fal.ai Usage ${formatUsd(ledger.reconciled.actualUsd)} (сверено ${ledger.reconciled.at.slice(0, 10)})` : ""}; потолок проверяется по ${formatUsd(effectiveSpent(ledger))} (запас ×${COST_SAFETY_FACTOR}) из ${formatUsd(SPEND_CEILING_USD)}
 
 ## 1. Модели — все участники
 
@@ -144,6 +195,14 @@ ${stats.find((s) => s.model === "lora") ? `- **Контроль LoRA** (${loraTr
   const l = stats.find((s) => s.model === "lora")!;
   return `годных ${pct(l.sellableShare)}, сходство ${num(l.manualSimilarity)} / авто ${num(l.autoSimilarity, 3)} — сравните с zero-shot моделями на том же человеке в галереях ниже.`;
 })()}` : ""}
+
+## 6а. Признаки внешности (bench:analyze)
+
+${accuracySection()}
+
+## 6б. Абляция: строка признаков в промпте
+
+${ablationSection()}
 
 ## 7. Мини-тест апскейла
 

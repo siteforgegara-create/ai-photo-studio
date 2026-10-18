@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { shootStyles } from "../src/config/styles";
 import { DEMO, MAX_CONCURRENCY } from "./config";
-import { formatUsd, type PlanItem, type Size } from "./lib/cost";
+import { formatUsd, type Size } from "./lib/cost";
 import { getFalKey } from "./lib/env";
 import { confirm, fail, parseCommonArgs, printPlan } from "./lib/cli";
 import { execute } from "./lib/execute";
@@ -24,7 +24,8 @@ import { upload } from "./lib/fal";
 import { analyzeFace, cosine, defectOf, largestFace } from "./lib/face";
 import { downloadImage, exportWebp, normalizeSelfie } from "./lib/images";
 import { Spend } from "./lib/ledger";
-import { buildFrameInput, frameCost, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse } from "./lib/models";
+import { buildFrameInput, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse } from "./lib/models";
+import { demoCandidateFile, demoEditFile, demoItems } from "./lib/plans";
 import { ROOT, resolveRunId, runDir } from "./lib/paths";
 import { runPool } from "./lib/pool";
 import { loadSubjects, type Subject } from "./lib/subjects";
@@ -59,32 +60,9 @@ if (!persona && !args.dryRun) fail(`${personaId} not found in bench/subjects/ �
 if (persona && persona.type !== "synth") fail("The demo heroine must be a synthetic persona (synth-*), never a real person.");
 
 const selfieSizes: Size[] = persona ? await Promise.all(persona.selfies.slice(0, 8).map(async (f) => normalizeSelfie(f).then((n) => ({ width: n.width, height: n.height })))) : Array.from({ length: 6 }, () => PLANNED_SELFIE_SIZE);
-const styleCost = frameCost(model, selfieSizes);
-const editCost = frameCost(editModel, [{ width: 880, height: 1100 }]);
-
-const candFile = (style: string, k: number) => path.join(DIR, "candidates", `${style}-${k}.jpg`);
-const editFile = (tool: string, option: string) => path.join(DIR, "edits", `${tool}-${option}.jpg`);
-
-const styleItems: (PlanItem & { style: string; k: number; seed: number })[] = shootStyles.flatMap((s, si) =>
-  Array.from({ length: CANDIDATES }, (_, i) => ({
-    key: `demo/${s.id}-${i + 1}`,
-    group: `12 styles · ${model.label}`,
-    label: `${s.name} candidate ${i + 1}`,
-    costUsd: styleCost,
-    cached: existsSync(candFile(s.id, i + 1)),
-    style: s.id,
-    k: i + 1,
-    seed: 5000 + si * 10 + i,
-  })),
-);
-const editItems: (PlanItem & { tool: string; option: string; prompt: string })[] = DEMO_EDITS.map((e) => ({
-  key: `demo/edit/${e.tool}-${e.option}`,
-  group: `Studio edits · ${editModel.label}`,
-  label: `${e.tool} → ${e.option}`,
-  costUsd: editCost,
-  cached: existsSync(editFile(e.tool, e.option)),
-  ...e,
-}));
+const { styles: styleItems, edits: editItems } = demoItems(runId, model, editModel, selfieSizes, CANDIDATES);
+const candFile = (style: string, k: number) => demoCandidateFile(runId, style, k);
+const editFile = (tool: string, option: string) => demoEditFile(runId, tool, option);
 
 console.log(`Demo heroine: ${personaId}${persona ? "" : " (planned)"} · shoot model: ${model.label} · edits model: ${editModel.label}`);
 const runnable = new Set(printPlan("bench:demo", [...styleItems, ...editItems], spend.snapshot()).map((i) => i.key));

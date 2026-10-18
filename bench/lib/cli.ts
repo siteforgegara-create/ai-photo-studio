@@ -1,7 +1,7 @@
 import { createInterface } from "node:readline/promises";
 import { parseArgs } from "node:util";
-import { SPEND_CEILING_USD } from "../config";
-import { fitUnderCeiling, formatUsd, remaining, summarize, type Ledger, type PlanItem } from "./cost";
+import { COST_SAFETY_FACTOR, SPEND_CEILING_USD } from "../config";
+import { effectiveSpent, fitUnderCeiling, formatUsd, remaining, summarize, withMargin, type Ledger, type PlanItem } from "./cost";
 
 /** Every bench command imports this module: print errors as one clear line instead of a stack trace. */
 function onFatal(e: unknown) {
@@ -25,6 +25,14 @@ export type CommonArgs = {
   loraSubject?: string;
   noLora: boolean;
   candidates?: number;
+  /** bench:personas — regenerate these personas from scratch. */
+  redo?: string[];
+  /** bench:run — leave the "Subject details" line out of every prompt (and skip the ablation). */
+  noAttrs: boolean;
+  /** bench:run — ablation subjects (default: decided by the B0 forecast, 4 or 2). */
+  ablationSubjects?: number;
+  /** bench:reconcile — actual total from the fal.ai Usage page. */
+  actual?: number;
 };
 
 export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
@@ -43,6 +51,10 @@ export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
       "lora-subject": { type: "string" },
       "no-lora": { type: "boolean", default: false },
       candidates: { type: "string" },
+      redo: { type: "string" },
+      "no-attrs": { type: "boolean", default: false },
+      "ablation-subjects": { type: "string" },
+      actual: { type: "string" },
     },
   });
   const list = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
@@ -58,6 +70,10 @@ export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
     loraSubject: values["lora-subject"],
     noLora: Boolean(values["no-lora"]),
     candidates: values.candidates ? Math.max(1, Math.min(4, Number(values.candidates) || 1)) : undefined,
+    redo: list(values.redo),
+    noAttrs: Boolean(values["no-attrs"]),
+    ablationSubjects: values["ablation-subjects"] ? Math.max(0, Math.min(4, Number(values["ablation-subjects"]) || 0)) : undefined,
+    actual: values.actual !== undefined ? Number(values.actual.replace(/[$,\s]/g, "")) : undefined,
   };
 }
 
@@ -68,21 +84,31 @@ export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
 export function printPlan(title: string, items: PlanItem[], ledger: Ledger): PlanItem[] {
   const s = summarize(items);
   const { fit, cut } = fitUnderCeiling(items, ledger, SPEND_CEILING_USD);
-  console.log(`\n=== ${title} ===`);
+  const m = (usd: number) => formatUsd(withMargin(usd));
+  console.log(`\n=== ${title} ===   (list price → with ×${COST_SAFETY_FACTOR} margin)`);
   if (s.byGroup.length) {
     const w = Math.max(...s.byGroup.map((g) => g.group.length), 10);
-    for (const g of s.byGroup) console.log(`  ${g.group.padEnd(w)}  ${String(g.calls).padStart(4)} calls  ${formatUsd(g.costUsd).padStart(9)}`);
+    for (const g of s.byGroup) console.log(`  ${g.group.padEnd(w)}  ${String(g.calls).padStart(4)} calls  ${formatUsd(g.costUsd).padStart(9)} → ${m(g.costUsd).padStart(8)}`);
   }
-  console.log(`  ${"-".repeat(40)}`);
-  console.log(`  To run: ${s.toRun} calls, ${formatUsd(s.costUsd)}   (already done, skipped: ${s.cached})`);
-  console.log(`  Spent so far (all runs): ${formatUsd(ledger.spentUsd)} of ${formatUsd(SPEND_CEILING_USD)} — left ${formatUsd(remaining(ledger, SPEND_CEILING_USD))}`);
+  console.log(`  ${"-".repeat(48)}`);
+  console.log(`  To run: ${s.toRun} calls, list price ${formatUsd(s.costUsd)}, with margin ${m(s.costUsd)}   (already done, skipped: ${s.cached})`);
+  printSpent(ledger);
   if (cut.length) {
     const cutUsd = cut.reduce((a, i) => a + i.costUsd, 0);
-    console.log(`  ⚠ Ceiling: ${cut.length} calls (${formatUsd(cutUsd)}) do not fit and will NOT run:`);
+    console.log(`  ⚠ Ceiling: ${cut.length} calls (list ${formatUsd(cutUsd)}, with margin ${m(cutUsd)}) do not fit and will NOT run:`);
     for (const i of cut.slice(0, 8)) console.log(`     - ${i.label} (${formatUsd(i.costUsd)})`);
     if (cut.length > 8) console.log(`     … and ${cut.length - 8} more`);
   }
   return fit.filter((i) => !i.cached);
+}
+
+/** "Spent so far" line: counted at list prices, the reconciled fal.ai total, and what the ceiling uses. */
+export function printSpent(ledger: Ledger) {
+  const r = ledger.reconciled;
+  const counted = `counted ${formatUsd(ledger.spentUsd)} at list prices`;
+  const actual = r ? `; fal.ai Usage ${formatUsd(r.actualUsd)} (entered ${r.at.slice(0, 10)}, when ${formatUsd(r.countedUsd)} was counted)` : "";
+  console.log(`  Spent so far (all runs): ${counted}${actual}`);
+  console.log(`  Ceiling check uses ${formatUsd(effectiveSpent(ledger))} of ${formatUsd(SPEND_CEILING_USD)} — left ${formatUsd(remaining(ledger, SPEND_CEILING_USD))} (margin dollars)`);
 }
 
 export async function confirm(args: CommonArgs, question = "Proceed?"): Promise<boolean> {

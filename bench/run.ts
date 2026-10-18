@@ -1,14 +1,22 @@
 /**
  * Generation (docs/07 §3–4, §6): every subject × model × 2 styles × 2 frames,
- * plus the LoRA control for one real participant.
+ * plus the LoRA control for one real participant and the attribute ablation
+ * (nb21-noattr: Nano Banana 2.1 without the "Subject details" line).
+ *
+ * Every prompt (LoRA included) ends with the subject's voted attributes from
+ * bench:analyze, e.g. "Subject details (preserve exactly): green eyes, auburn
+ * shoulder-length straight hair, fair skin with freckles. Preserve apparent
+ * age exactly." — `--no-attrs` leaves the line out and skips the ablation.
  *
  *   npm run bench:run -- --dry-run
- *   npm run bench:run [-- --only=nb21,seedream --subjects=real-01 --run=2026-10-20 --no-lora --lora-subject=real-02 --yes]
+ *   npm run bench:run [-- --only=nb21,seedream,nb21-noattr --subjects=real-01 --run=2026-10-20 --no-lora --lora-subject=real-02 --no-attrs --ablation-subjects=2 --yes]
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { zipSync } from "fflate";
-import { BENCH_STYLES, FRAMES_PER_STYLE, LORA, MAX_CONCURRENCY, MODELS, OUTPUT, type BenchModel } from "./config";
+import { ABLATION, LORA, MAX_CONCURRENCY, MODELS, OUTPUT, type BenchModel } from "./config";
+import type { SubjectAttributes } from "./lib/attributes";
+import { buildB0Forecast } from "./lib/b0-forecast";
 import { formatUsd, type PlanItem, type Size } from "./lib/cost";
 import { getFalKey } from "./lib/env";
 import { confirm, fail, parseCommonArgs, printPlan } from "./lib/cli";
@@ -16,22 +24,13 @@ import { execute } from "./lib/execute";
 import { upload } from "./lib/fal";
 import { downloadImage, normalizeSelfie } from "./lib/images";
 import { Spend } from "./lib/ledger";
-import {
-  buildFrameInput,
-  buildLoraFrameInput,
-  frameCost,
-  getModel,
-  loraFrameCost,
-  loraTrainCost,
-  PLANNED_SELFIE_SIZE,
-  seedFor,
-  type ImagesResponse,
-  type LoraTrainResponse,
-} from "./lib/models";
-import { framePath, resolveRunId, runDir } from "./lib/paths";
+import { appendLog, readLog } from "./lib/log";
+import { buildFrameInput, buildLoraFrameInput, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse, type LoraTrainResponse } from "./lib/models";
+import { resolveRunId, runDir } from "./lib/paths";
+import { readAttributes } from "./lib/plans";
 import { runPool } from "./lib/pool";
+import { ablationSubjectIds, buildRunPlan, type FrameItem } from "./lib/run-plan";
 import { subjectsForPlan, validateSubject, type Subject } from "./lib/subjects";
-import { generationPrompt } from "./prompts";
 
 const args = parseCommonArgs();
 const spend = new Spend();
@@ -39,8 +38,9 @@ const runId = resolveRunId(args.run);
 const RUN = runDir(runId);
 const LOG = path.join(RUN, "log.jsonl");
 
-const models: BenchModel[] = (args.only?.filter((k) => k !== "lora") ?? Object.keys(MODELS)).map(getModel);
+const models: BenchModel[] = (args.only?.filter((k) => k !== "lora" && k !== ABLATION.key) ?? Object.keys(MODELS)).map(getModel);
 const withLora = !args.noLora && (!args.only || args.only.includes("lora"));
+const withAblation = !args.noAttrs && (!args.only || args.only.includes(ABLATION.key));
 const subjects = subjectsForPlan(args.subjects, args.dryRun);
 if (!subjects.length) fail("No subjects in bench/subjects/. Add real-01/selfies/*.jpg (4–8 photos) and run bench:personas first — see bench/README.md.");
 
@@ -56,7 +56,21 @@ const loraSubject: Subject | undefined = withLora
   : undefined;
 if (withLora && args.loraSubject && !loraSubject) fail(`--lora-subject=${args.loraSubject} is not among the subjects.`);
 
-// Selfie sizes after normalisation (needed for FLUX.2 per-MP input pricing).
+// Attributes from bench:analyze (the "Subject details" line).
+const attrs = new Map<string, SubjectAttributes | null>();
+const missingAttrs: string[] = [];
+for (const s of subjects) {
+  const a = args.noAttrs || s.planned ? null : readAttributes(runId, s.id);
+  attrs.set(s.id, a);
+  if (!args.noAttrs && !a) missingAttrs.push(s.id);
+}
+if (missingAttrs.length) {
+  const msg = `No attributes for ${missingAttrs.join(", ")} in bench/runs/${runId}/ — run npm run bench:analyze first (or pass --no-attrs).`;
+  if (args.dryRun) console.log(`⚠ ${msg} Their frames are planned as new.`);
+  else fail(msg);
+}
+
+// Selfie sizes after normalisation (per-MP input pricing).
 const selfieSizes = new Map<string, Size[]>();
 for (const s of subjects) {
   if (s.planned) {
@@ -72,48 +86,40 @@ for (const s of subjects) {
 }
 
 // ─── Plan ───────────────────────────────────────────────────────────────────
-type FrameItem = PlanItem & { subject: Subject; model: BenchModel | "lora"; style: string; styleIndex: number; n: number; file: string };
-const frames: FrameItem[] = [];
-for (const subject of subjects) {
-  for (const model of models) {
-    BENCH_STYLES.forEach((style, styleIndex) => {
-      for (let n = 1; n <= FRAMES_PER_STYLE; n++) {
-        const file = framePath(runId, subject.id, model.key, style, n);
-        frames.push({
-          key: `${subject.id}/${model.key}/${style}-${n}`,
-          group: model.label,
-          label: `${subject.id} · ${model.label} · ${style} #${n}`,
-          costUsd: frameCost(model, selfieSizes.get(subject.id) ?? []),
-          cached: existsSync(file),
-          subject,
-          model,
-          style,
-          styleIndex,
-          n,
-          file,
-        });
-      }
-    });
+// Ablation size: --ablation-subjects, else what the full B0 forecast allows (4, or 2 when over the ceiling).
+let ablationCount = 0;
+if (withAblation) {
+  if (args.ablationSubjects !== undefined) ablationCount = args.ablationSubjects;
+  else {
+    const b0 = await buildB0Forecast(runId);
+    ablationCount = b0.option.ablationSubjects;
+    console.log(`Ablation ${ABLATION.key}: ${ablationCount} subjects (B0 forecast with margin: ${formatUsd(b0.forecast.totalMarginUsd)} of ${formatUsd(b0.forecast.ceilingUsd)}${b0.applied.length ? `; cuts: ${b0.applied.join("; ")}` : ""}). Details: npm run bench:forecast`);
   }
 }
+const ablationIds = ablationSubjectIds(new Set(subjects.map((s) => s.id)), ablationCount);
+const plan = buildRunPlan({
+  runId,
+  subjects,
+  models,
+  loraSubject,
+  selfieSizes,
+  attrs,
+  noAttrs: args.noAttrs,
+  ablationSubjects: subjects.filter((s) => ablationIds.includes(s.id)),
+  log: readLog(LOG),
+});
+const frames: FrameItem[] = [...plan.frames, ...plan.ablation];
+const loraTrain = plan.loraTrain;
 const loraDir = loraSubject ? path.join(RUN, loraSubject.id, "lora") : "";
 const loraInfoFile = loraSubject ? path.join(loraDir, "training.json") : "";
-const loraTrain: PlanItem | null = loraSubject
-  ? { key: `${loraSubject.id}/lora/train`, group: "LoRA training", label: `LoRA training on ${loraSubject.id} (${LORA.steps} steps)`, costUsd: loraTrainCost(), cached: existsSync(loraInfoFile) }
-  : null;
-if (loraSubject) {
-  BENCH_STYLES.forEach((style, styleIndex) => {
-    for (let n = 1; n <= FRAMES_PER_STYLE; n++) {
-      const file = framePath(runId, loraSubject.id, "lora", style, n);
-      frames.push({ key: `${loraSubject.id}/lora/${style}-${n}`, group: "FLUX LoRA frames", label: `${loraSubject.id} · LoRA · ${style} #${n}`, costUsd: loraFrameCost(), cached: existsSync(file), subject: loraSubject, model: "lora", style, styleIndex, n, file });
-    }
-  });
-}
 
 console.log(`Run: bench/runs/${runId}   Subjects: ${subjects.map((s) => s.id).join(", ")}${subjects.some((s) => s.planned) ? "  (PLANNED — no photos yet)" : ""}`);
 console.log(`Models: ${models.map((m) => `${m.key} → ${m.endpoint} (${m.source.note})`).join("\n        ")}`);
 if (loraSubject) console.log(`        lora → ${LORA.trainEndpoint} + ${LORA.generateEndpoint} on ${loraSubject.id}`);
-console.log(`Output: ${OUTPUT.width}×${OUTPUT.height} (Seedream 1728×2160 — its minimum). Prices checked ${MODELS.nb21.source.checked}.`);
+if (plan.ablation.length) console.log(`        ${ABLATION.key} → ${MODELS[ABLATION.baseModel].endpoint} without the attribute line, on ${ablationIds.join(", ")}${plan.ablation.some((f) => f.adopt) ? ` (${plan.ablation.filter((f) => f.adopt).length} smoke-test frames reused — identical request)` : ""}`);
+console.log(`Prompts: ${args.noAttrs ? "WITHOUT the attribute line (--no-attrs)" : "with the voted attributes of each subject"}.`);
+for (const s of subjects) if (attrs.get(s.id)) console.log(`  ${s.id}: ${plan.frames.find((f) => f.subject.id === s.id && f.prompt)?.prompt?.match(/Subject details[^]*$/)?.[0] ?? ""}`);
+console.log(`Output: ${OUTPUT.width}×${OUTPUT.height} class (Seedream 1728×2160 — its minimum). Prices checked ${MODELS.nb21.source.checked}.`);
 for (const m of Object.values(MODELS)) if (m.note) console.log(`  · ${m.label}: ${m.note}`);
 const planItems: PlanItem[] = [...(loraTrain ? [loraTrain] : []), ...frames];
 const runnable = new Set(printPlan("bench:run", planItems, spend.snapshot()).map((i) => i.key));
@@ -123,6 +129,16 @@ if (args.dryRun) {
   process.exit(0);
 }
 getFalKey(); // fail before asking for confirmation if the key is missing
+
+// Smoke-test frames with exactly the ablation request: copy them into nb21-noattr (free, logged).
+for (const f of plan.ablation.filter((f) => f.adopt && !existsSync(f.file))) {
+  mkdirSync(path.dirname(f.file), { recursive: true });
+  copyFileSync(f.adopt!.file, f.file);
+  const e = f.adopt!.entry;
+  appendLog(LOG, { ...e, at: new Date().toISOString(), key: f.key, model: f.dir, promptHash: f.promptHash ?? undefined, adoptedFrom: e.key, output: { ...e.output, file: path.relative(RUN, f.file) } });
+  console.log(`  ↺ ${f.key}: reused ${e.key} (same endpoint, prompt and seed; no new call)`);
+}
+
 if (!runnable.size) {
   console.log("\nNothing to do — every frame is already generated.");
   process.exit(0);
@@ -131,7 +147,7 @@ if (!(await confirm(args))) process.exit(0);
 
 // ─── Execute ────────────────────────────────────────────────────────────────
 mkdirSync(RUN, { recursive: true });
-writeFileSync(path.join(RUN, "run.json"), JSON.stringify({ runId, startedAt: new Date().toISOString(), models: models.map((m) => m.key), lora: loraSubject?.id ?? null, styles: BENCH_STYLES }, null, 2));
+writeFileSync(path.join(RUN, "run.json"), JSON.stringify({ runId, startedAt: new Date().toISOString(), models: models.map((m) => m.key), lora: loraSubject?.id ?? null, attributes: !args.noAttrs, ablation: ablationIds }, null, 2));
 
 /** Selfies uploaded once per subject per run; URLs expire after a day, so they are re-uploaded after 20 h. */
 async function uploadedSelfies(subject: Subject): Promise<string[]> {
@@ -187,9 +203,9 @@ for (const subject of subjects) {
   const lora = loraSubject?.id === subject.id ? await loraUrl(subject) : null;
 
   const jobs = todo
-    .filter((f) => f.model !== "lora" || lora)
+    .filter((f) => (f.model !== "lora" || lora) && f.prompt)
     .map((f) => () => {
-      const seed = seedFor(f.styleIndex, f.n);
+      const seed = f.seed;
       const isLora = f.model === "lora";
       const model = f.model as BenchModel;
       return execute<ImagesResponse>(
@@ -197,9 +213,9 @@ for (const subject of subjects) {
           key: f.key,
           kind: "frame",
           endpoint: isLora ? LORA.generateEndpoint : model.endpoint,
-          input: isLora ? buildLoraFrameInput(generationPrompt(f.style, `${LORA.triggerWord} person`), lora!, seed) : buildFrameInput(model, generationPrompt(f.style), refUrls, seed),
+          input: isLora ? buildLoraFrameInput(f.prompt!, lora!, seed) : buildFrameInput(model, f.prompt!, refUrls, seed),
           costUsd: f.costUsd,
-          meta: { subject: f.subject.id, model: isLora ? "lora" : model.key, style: f.style, n: f.n },
+          meta: { subject: f.subject.id, model: f.dir, style: f.style, n: f.n, promptHash: f.promptHash ?? undefined },
           save: async (d) => {
             const img = d.images?.[0];
             if (!img?.url) throw new Error("no image in the response");

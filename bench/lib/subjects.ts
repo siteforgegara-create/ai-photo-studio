@@ -2,13 +2,14 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import path from "node:path";
 import { PLANNED_REAL_SUBJECTS, PLANNED_SYNTH_SUBJECTS } from "../config";
 import { PERSONA_SPECS } from "../prompts";
+import type { AttributeTruth } from "./attributes";
 import { listImages, SUBJECTS_DIR } from "./paths";
 
 /**
  * bench/subjects/
  *   real-01/selfies/*.jpg        owner's photos (git-ignored)
  *   synth-01/reference.jpg + selfies/*.jpg   created by bench:personas
- *   subjects.json                id, type, gender, age group, skin tone
+ *   subjects.json                id, type, gender, age group, skin tone; synth-*: "truth"
  */
 export type SubjectMeta = {
   id: string;
@@ -16,6 +17,8 @@ export type SubjectMeta = {
   gender?: string;
   ageGroup?: string;
   skinTone?: string;
+  /** synth-* only: visible attributes the persona was generated with (bench:analyze accuracy). */
+  truth?: AttributeTruth;
 };
 
 export type Subject = SubjectMeta & {
@@ -43,6 +46,11 @@ export function writeSubjectsMeta(list: SubjectMeta[]) {
 export function upsertSubjectMeta(meta: SubjectMeta) {
   const list = readSubjectsMeta().filter((m) => m.id !== meta.id);
   writeSubjectsMeta([...list, meta]);
+}
+
+/** Truth for a synthetic persona: subjects.json, else the current PERSONA_SPECS entry. */
+export function truthFor(id: string): AttributeTruth | undefined {
+  return readSubjectsMeta().find((m) => m.id === id)?.truth ?? PERSONA_SPECS.find((p) => p.id === id)?.truth;
 }
 
 /** Subjects present on disk (folders real-*, synth-*), merged with subjects.json. */

@@ -12,6 +12,16 @@ export const PRICES_CHECKED = "2026-10-18";
 /** Hard ceiling for everything B0 does (docs/07: $17 of the $20 balance). */
 export const SPEND_CEILING_USD = 17;
 
+/**
+ * Calibration: after the smoke test fal.ai Usage showed $1.61 against $1.44
+ * counted at list prices (+12%). Every planned price is multiplied by this
+ * factor in dry-runs, in the ceiling check and in the B0 forecast; output
+ * shows both "list price" and "with margin". The ceiling is checked against
+ * max(counted × factor, reconciled actual + calls since then × factor) —
+ * see effectiveSpent() and `npm run bench:reconcile -- --actual=1.61`.
+ */
+export const COST_SAFETY_FACTOR = 1.2;
+
 /** Generation resolution for the comparison (docs/07 §3: 1K for all). 4:5 portrait. */
 export const OUTPUT = { width: 880, height: 1100 } as const; // 0.968 MP: stays inside the first megapixel for per-MP pricing
 
@@ -166,6 +176,56 @@ export const PERSONAS = {
     { url: "https://fal.ai/models/fal-ai/qwen-image", checked: PRICES_CHECKED, note: "$0.02 per megapixel" },
     { url: "https://fal.ai/models/fal-ai/qwen-image-edit-2511", checked: PRICES_CHECKED, note: "$0.03 per megapixel; image_urls, image_size, seed" },
   ] as Source[],
+};
+
+/**
+ * Visible-appearance analysis (bench:analyze): every selfie separately, then a
+ * majority vote per subject. Only visible attributes — never race, ethnic
+ * origin or a numeric age (lib/attributes.ts enforces the vocabulary).
+ *
+ * fal.ai "OpenRouter Vision" router, Gemini 2.5 Flash, temperature 0. Billed
+ * by tokens at OpenRouter rates ($0.30 per 1M input, $2.50 per 1M output):
+ * one ~1 MP selfie (~1,000–1,300 image tokens) + ~450 prompt tokens + ≤ 300
+ * output tokens ≈ $0.0012. Planned at $0.003 per selfie (×2.5 headroom);
+ * the response also reports usage.cost, which is written to the log.
+ * Alternative with a flat price: fal-ai/any-llm/vision, "$0.01 per requests".
+ */
+export const ANALYZE = {
+  endpoint: "openrouter/router/vision",
+  model: "google/gemini-2.5-flash",
+  pricing: { kind: "per_image", usd: 0.003 } as Pricing,
+  maxTokens: 400,
+  sources: [
+    { url: "https://fal.ai/models/openrouter/router/vision", checked: PRICES_CHECKED, note: "charged by input and output tokens; returns usage.cost" },
+    { url: "https://openrouter.ai/google/gemini-2.5-flash", checked: PRICES_CHECKED, note: "$0.30 per 1M input tokens, $2.50 per 1M output tokens" },
+    { url: "https://fal.ai/models/fal-ai/any-llm/vision", checked: PRICES_CHECKED, note: "alternative: $0.01 per request flat" },
+  ] as Source[],
+};
+
+/**
+ * Attribute ablation (bench:run group "nb21-noattr"): Nano Banana 2.1 without
+ * the "Subject details" line, 2 styles × 2 frames per subject. Subjects in
+ * this order; a real id that is not on disk yet is replaced by its fallback.
+ * The B0 forecast cuts it to the first 2 subjects when the full plan with the
+ * margin would cross the ceiling.
+ */
+export const ABLATION = {
+  baseModel: "nb21" as const,
+  key: "nb21-noattr",
+  label: "Nano Banana 2.1 · no attrs",
+  subjects: ["synth-01", "synth-02", "real-01", "real-02"],
+  fallback: { "real-01": "synth-03", "real-02": "synth-05" } as Record<string, string>,
+  reducedSubjects: 2,
+};
+
+/**
+ * B0 forecast (bench:forecast): personas still to regenerate (unless already
+ * redone with the current prompt) and the model assumed for the demo step.
+ */
+export const FORECAST = {
+  redo: ["synth-02", "synth-05"],
+  demoModel: "nb21" as const,
+  demoAltModel: "nbpro" as const,
 };
 
 /** Upscale mini-test (docs/07 §3): 3 best frames → 4K. */

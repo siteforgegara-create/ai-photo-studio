@@ -2,7 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { LORA, MODELS, OUTPUT, PERSONAS, SPEND_CEILING_USD, UPSCALE } from "../config";
 import type { Pricing } from "../config";
-import { billedMp, callCost, MP_FLUX, canSpend, emptyLedger, fitUnderCeiling, record, summarize, type PlanItem } from "./cost";
+import { billedMp, callCost, MP_FLUX, canSpend, effectiveSpent, emptyLedger, fitUnderCeiling, reconcile, record, remaining, summarize, withMargin, type PlanItem } from "./cost";
+import { COST_SAFETY_FACTOR } from "../config";
 import { frameCost, loraFrameCost, loraTrainCost, PLANNED_SELFIE_SIZE } from "./models";
 
 describe("callCost", () => {
@@ -68,17 +69,17 @@ describe("plan and ceiling", () => {
     expect(cut.map((i) => i.key)).toEqual(["d"]);
   });
 
-  it("counts what was already spent in earlier runs", () => {
+  it("counts what was already spent in earlier runs (list prices, factor 1)", () => {
     const ledger = record(emptyLedger(), { at: "x", key: "old", usd: 10, status: "ok" });
-    const { cut } = fitUnderCeiling(items, ledger, SPEND_CEILING_USD);
+    const { cut } = fitUnderCeiling(items, ledger, SPEND_CEILING_USD, 1);
     expect(cut.map((i) => i.key)).toEqual(["c", "d"]);
   });
 
-  it("allows exactly reaching the ceiling, never crossing it", () => {
+  it("allows exactly reaching the ceiling, never crossing it (factor 1)", () => {
     const ledger = record(emptyLedger(), { at: "x", key: "k", usd: 16.9, status: "ok" });
-    expect(canSpend(ledger, 0, 0.1, 17)).toBe(true);
-    expect(canSpend(ledger, 0, 0.1001, 17)).toBe(false);
-    expect(canSpend(ledger, 0.05, 0.08, 17)).toBe(false); // in-flight reservations count
+    expect(canSpend(ledger, 0, 0.1, 17, 1)).toBe(true);
+    expect(canSpend(ledger, 0, 0.1001, 17, 1)).toBe(false);
+    expect(canSpend(ledger, 0.05, 0.08, 17, 1)).toBe(false); // in-flight reservations count
   });
 
   it("free failures do not count, unknown failures do", () => {
@@ -97,5 +98,45 @@ describe("plan and ceiling", () => {
     const demoNbPro = 17 * 0.15; // most expensive winner
     expect(Math.round(run * 100) / 100).toBe(11.73);
     expect(run + personas + upscale + demoNbPro).toBeLessThanOrEqual(SPEND_CEILING_USD);
+  });
+});
+
+describe("safety margin and reconciliation", () => {
+  it("default factor is 1.2 and applies to every planned price", () => {
+    expect(COST_SAFETY_FACTOR).toBe(1.2);
+    expect(withMargin(10)).toBe(12);
+    // $14 counted → $16.80 with margin: a $0.15 call ($0.18) still fits, $0.20 ($0.24) does not.
+    const l = record(emptyLedger(), { at: "x", key: "k", usd: 14, status: "ok" });
+    expect(effectiveSpent(l)).toBe(16.8);
+    expect(canSpend(l, 0, 0.15, 17)).toBe(true);
+    expect(canSpend(l, 0, 0.2, 17)).toBe(false);
+  });
+
+  it("ceiling uses max(counted × 1.2, reconciled + later calls × 1.2)", () => {
+    let l = record(emptyLedger(), { at: "x", key: "smoke", usd: 1.44, status: "ok" });
+    expect(effectiveSpent(l)).toBe(1.728);
+    l = reconcile(l, 1.61, "2026-10-18T10:00:00Z");
+    expect(l.reconciled).toEqual({ actualUsd: 1.61, countedUsd: 1.44, at: "2026-10-18T10:00:00Z" });
+    expect(effectiveSpent(l)).toBe(1.728); // 1.44 × 1.2 > 1.61
+    l = record(l, { at: "y", key: "run", usd: 1, status: "ok" });
+    expect(effectiveSpent(l)).toBe(2.928); // max(2.44 × 1.2 = 2.928, 1.61 + 1 × 1.2 = 2.81)
+    const worse = reconcile(record(emptyLedger(), { at: "x", key: "k", usd: 1, status: "ok" }), 1.5);
+    expect(effectiveSpent(worse)).toBe(1.5); // actual above counted × 1.2 → actual wins
+    expect(remaining(worse, 17)).toBe(15.5);
+  });
+
+  it("rejects a bad --actual", () => {
+    expect(() => reconcile(emptyLedger(), Number.NaN)).toThrow();
+    expect(() => reconcile(emptyLedger(), -1)).toThrow();
+  });
+
+  it("the plan cut-off counts every item with the margin", () => {
+    const items: PlanItem[] = [
+      { key: "a", group: "g", label: "a", costUsd: 7 },
+      { key: "b", group: "g", label: "b", costUsd: 7 },
+    ];
+    // 2 × $7 → $16.80 with margin: fits; a 3rd call of $0.20 ($0.24) would cross $17 although $14.20 at list prices would not.
+    expect(fitUnderCeiling(items, emptyLedger(), 17).cut).toEqual([]);
+    expect(fitUnderCeiling([...items, { key: "c", group: "g", label: "c", costUsd: 0.2 }], emptyLedger(), 17).cut.map((i) => i.key)).toEqual(["c"]);
   });
 });

@@ -14,12 +14,15 @@
     "screenshots": "playwright test --config=playwright.screenshots.config.ts",
     "postinstall": "node scripts/copy-vendor-wasm.mjs",
     "bench:personas": "tsx bench/personas.ts",
+    "bench:analyze": "tsx bench/analyze.ts",
     "bench:run": "tsx bench/run.ts",
     "bench:score": "tsx bench/score.ts",
     "bench:review": "tsx bench/review.ts",
     "bench:report": "tsx bench/report.ts",
     "bench:upscale": "tsx bench/upscale.ts",
-    "bench:demo": "tsx bench/demo.ts"
+    "bench:demo": "tsx bench/demo.ts",
+    "bench:forecast": "tsx bench/forecast.ts",
+    "bench:reconcile": "tsx bench/reconcile.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

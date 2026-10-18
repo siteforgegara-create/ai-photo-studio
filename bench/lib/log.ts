@@ -6,17 +6,21 @@ import { redact } from "./env";
 export type CallLog = {
   at: string;
   key: string;
-  kind: "frame" | "persona" | "lora-train" | "upscale" | "demo";
+  kind: "frame" | "persona" | "lora-train" | "upscale" | "demo" | "analyze";
   subject?: string;
   model?: string;
   style?: string;
   n?: number;
+  /** Hash of everything that shapes the frame (endpoint, prompt, seed): a cached frame with another hash is regenerated. */
+  promptHash?: string;
+  /** Frame reused from an earlier call with the identical request (e.g. smoke-test frames in the ablation group). */
+  adoptedFrom?: string;
   endpoint: string;
   requestId?: string;
   ms?: number;
   usd: number;
   status: "ok" | "failed-charged" | "failed-free" | "skipped-ceiling";
-  output?: { file?: string; url?: string; width?: number; height?: number };
+  output?: { file?: string; url?: string; width?: number; height?: number; actualUsd?: number };
   response?: unknown;
   error?: string;
 };

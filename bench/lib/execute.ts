@@ -9,7 +9,7 @@ export type Job<T> = {
   endpoint: string;
   input: Record<string, unknown>;
   costUsd: number;
-  meta?: Pick<CallLog, "subject" | "model" | "style" | "n">;
+  meta?: Pick<CallLog, "subject" | "model" | "style" | "n" | "promptHash">;
   /** Saves the result (download etc.) and returns what goes into the log. */
   save: (data: T) => Promise<CallLog["output"]>;
 };

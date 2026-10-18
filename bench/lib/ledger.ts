@@ -1,13 +1,17 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { SPEND_CEILING_USD } from "../config";
-import { canSpend, emptyLedger, record, round, type Ledger } from "./cost";
+import { canSpend, effectiveSpent, emptyLedger, record, round, type Ledger } from "./cost";
 import { SPEND_FILE } from "./paths";
 
 export function loadLedger(file = SPEND_FILE): Ledger {
   if (!existsSync(file)) return emptyLedger();
   const parsed = JSON.parse(readFileSync(file, "utf8")) as Ledger;
-  return { spentUsd: parsed.spentUsd ?? 0, entries: parsed.entries ?? [] };
+  return { spentUsd: parsed.spentUsd ?? 0, entries: parsed.entries ?? [], ...(parsed.reconciled ? { reconciled: parsed.reconciled } : {}) };
+}
+
+export function saveLedger(ledger: Ledger, file = SPEND_FILE) {
+  save(ledger, file);
 }
 
 function save(ledger: Ledger, file: string) {
@@ -34,8 +38,14 @@ export class Spend {
     this.ledger = loadLedger(file);
   }
 
+  /** Counted at list prices. */
   get spent() {
     return this.ledger.spentUsd;
+  }
+
+  /** What the ceiling is checked against (safety factor, reconciled actual). */
+  get effective() {
+    return effectiveSpent(this.ledger);
   }
 
   snapshot(): Ledger {

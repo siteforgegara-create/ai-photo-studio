@@ -4,6 +4,7 @@
  * `modern-office`, the demo step (§8) uses all twelve.
  */
 import { shootStyles } from "../src/config/styles";
+import type { AttributeTruth } from "./lib/attributes";
 
 export const BASE_PROMPT =
   "Professional headshot photo of the same person as in the reference photos. Preserve their exact facial features, face shape, skin tone, eye color, hairline and age. Natural skin texture with visible pores. Head and shoulders, looking at the camera, relaxed confident expression, sharp focus on the eyes, shot on a full-frame camera with an 85mm lens.";
@@ -46,17 +47,60 @@ export type PersonaSpec = {
   id: string;
   gender: "female" | "male";
   ageGroup: "25-35" | "35-50" | "50-65";
-  skinTone: "light" | "olive" | "medium" | "brown" | "deep";
+  skinTone: "fair" | "light" | "medium" | "olive" | "brown" | "deep";
+  /** Appearance written into the reference prompt — explicit, so the generator cannot drift to one look for everyone. */
   description: string;
+  /** Visible attributes stated in `description`, in the bench:analyze vocabulary — written to subjects.json "truth". */
+  truth: AttributeTruth;
 };
 
-/** Five personas covering gender, the three age groups and a range of skin tones. */
+/**
+ * Five personas covering gender, the three age groups and skin tones from
+ * fair to deep. The appearance is spelled out: with a vague description Qwen
+ * Image drew most of them with the same look, and the bench must include a
+ * person with very dark skin (the hardest case for likeness).
+ */
 export const PERSONA_SPECS: PersonaSpec[] = [
-  { id: "synth-01", gender: "female", ageGroup: "25-35", skinTone: "light", description: "a woman in her early thirties with light skin, freckles, shoulder-length auburn hair, green eyes" },
-  { id: "synth-02", gender: "male", ageGroup: "35-50", skinTone: "deep", description: "a man in his mid forties with deep brown skin, short black hair with a little gray at the temples, a trimmed beard, brown eyes" },
-  { id: "synth-03", gender: "female", ageGroup: "50-65", skinTone: "medium", description: "a woman in her late fifties with medium brown skin, silver-streaked dark hair in a low bun, laugh lines, dark brown eyes" },
-  { id: "synth-04", gender: "male", ageGroup: "25-35", skinTone: "olive", description: "a man in his late twenties with olive skin, wavy dark hair, a slightly crooked nose, hazel eyes, clean shaven" },
-  { id: "synth-05", gender: "male", ageGroup: "50-65", skinTone: "brown", description: "a man in his early sixties with brown skin, a receding gray hairline, rectangular glasses, a gray mustache, dark eyes" },
+  {
+    id: "synth-01",
+    gender: "female",
+    ageGroup: "25-35",
+    skinTone: "fair",
+    description: "a Northern European woman in her early thirties with fair freckled skin, green eyes and auburn shoulder-length hair, no glasses",
+    truth: { eyeColor: "green", hairColor: "auburn", hairLength: "shoulder-length", skinTone: "fair", freckles: "yes", glasses: "no", facialHair: "none" },
+  },
+  {
+    id: "synth-02",
+    gender: "male",
+    ageGroup: "35-50",
+    skinTone: "deep",
+    description: "a Black African man in his mid forties with very dark, deep brown skin, short coily black hair, a short trimmed black beard and dark brown eyes, no glasses",
+    truth: { eyeColor: "dark brown", hairColor: "black", hairLength: "short", hairTexture: "coily", skinTone: "deep", glasses: "no", facialHair: "short beard" },
+  },
+  {
+    id: "synth-03",
+    gender: "female",
+    ageGroup: "50-65",
+    skinTone: "medium",
+    description: "an East Asian woman in her late fifties with medium skin, silver-streaked dark hair in a low bun, laugh lines and dark brown eyes, no glasses",
+    truth: { eyeColor: "dark brown", hairLength: "tied back", skinTone: "medium", glasses: "no", facialHair: "none" },
+  },
+  {
+    id: "synth-04",
+    gender: "male",
+    ageGroup: "25-35",
+    skinTone: "olive",
+    description: "a Mediterranean man in his late twenties with olive skin, dark curly hair, a slightly crooked nose and hazel eyes, clean shaven, no glasses",
+    truth: { eyeColor: "hazel", hairColor: "dark brown", hairTexture: "curly", skinTone: "olive", glasses: "no", facialHair: "none" },
+  },
+  {
+    id: "synth-05",
+    gender: "male",
+    ageGroup: "50-65",
+    skinTone: "brown",
+    description: "a South Asian (Indian) man in his early sixties with brown skin, short gray hair with a receding hairline, rectangular glasses, a gray mustache and dark brown eyes",
+    truth: { eyeColor: "dark brown", hairColor: "gray", hairLength: "short", skinTone: "brown", glasses: "yes", facialHair: "mustache" },
+  },
 ];
 
 export function personaReferencePrompt(p: PersonaSpec): string {
@@ -74,7 +118,7 @@ export const SELFIE_VARIANTS: string[] = [
 ];
 
 export function selfiePrompt(variant: string): string {
-  return `The same person as in the reference photo — keep their identity, face shape, skin tone, age and hairline exactly. ${variant} Realistic, unflattering, unedited phone photo. No filters, no beautification, single person.`;
+  return `The same person as in the reference photo — keep their identity, face shape, skin tone, age and hairline exactly. ${variant} Same person, same skin tone, same eye and hair color. Realistic, unflattering, unedited phone photo. No filters, no beautification, single person.`;
 }
 
 // ─── Demo edits (docs/07 §8): Studio tools ──────────────────────────────────

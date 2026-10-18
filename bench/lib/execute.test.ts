@@ -22,7 +22,7 @@ describe("Spend (ceiling guard)", () => {
     const { spendFile } = tmp();
     const spend = new Spend(spendFile, 17);
     const results = await Promise.all(Array.from({ length: 10 }, () => spend.reserve(2)));
-    expect(results.filter(Boolean)).toHaveLength(8); // 8 × $2 = $16; the 9th would make $18
+    expect(results.filter(Boolean)).toHaveLength(7); // with the ×1.2 margin each is $2.40: 7 × 2.4 = $16.80; the 8th would make $19.20
   });
 
   it("persists settled spend across processes (spend.json)", async () => {
@@ -32,8 +32,9 @@ describe("Spend (ceiling guard)", () => {
     await a.settle({ key: "k", usd: 3, status: "ok" }, 3);
     const b = new Spend(spendFile, 17);
     expect(b.spent).toBe(3);
-    expect(await b.reserve(14)).toBe(true);
-    expect(await b.reserve(0.01)).toBe(false);
+    expect(b.effective).toBe(3.6); // counted × 1.2
+    expect(await b.reserve(11)).toBe(true); // 3.6 + 13.2 = 16.8
+    expect(await b.reserve(0.2)).toBe(false); // + 0.24 → 17.04
   });
 });
 
@@ -55,9 +56,9 @@ describe("execute", () => {
     const { spendFile, logFile } = tmp();
     const spend = new Spend(spendFile, 0.1);
     callFal.mockResolvedValue({ ok: true, data: {}, requestId: "r", ms: 1 });
-    expect(await execute(job("a", 0.15), spend, logFile)).toBe("skipped");
-    expect(await execute(job("b", 0.08), spend, logFile)).toBe("ok"); // fits: 0.08 ≤ 0.10
-    expect(await execute(job("c", 0.08), spend, logFile)).toBe("skipped"); // 0.16 would cross
+    expect(await execute(job("a", 0.09), spend, logFile)).toBe("skipped"); // 0.108 with margin
+    expect(await execute(job("b", 0.08), spend, logFile)).toBe("ok"); // fits: 0.096 ≤ 0.10
+    expect(await execute(job("c", 0.08), spend, logFile)).toBe("skipped"); // 0.192 would cross
     expect(callFal).toHaveBeenCalledTimes(1);
     expect(readFileSync(logFile, "utf8")).toContain('"status":"skipped-ceiling"');
   });

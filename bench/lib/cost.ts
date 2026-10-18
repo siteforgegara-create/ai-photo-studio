@@ -2,7 +2,7 @@
  * Pure cost maths: price of one call, plan totals and the hard ceiling.
  * No I/O here — unit-tested in cost.test.ts.
  */
-import type { Pricing } from "../config";
+import { COST_SAFETY_FACTOR, type Pricing } from "../config";
 
 export type Size = { width: number; height: number };
 
@@ -97,33 +97,57 @@ export function summarize(items: PlanItem[]): PlanSummary {
 // ─── Ceiling ────────────────────────────────────────────────────────────────
 
 export type Ledger = {
-  /** Spent and recorded, across every run. */
+  /** Counted at list prices and recorded, across every run. */
   spentUsd: number;
   entries: { at: string; key: string; usd: number; status: "ok" | "failed-charged" | "failed-free"; requestId?: string }[];
+  /**
+   * Actual spend from the fal.ai Usage page, entered by the owner
+   * (npm run bench:reconcile -- --actual=1.61). `countedUsd` = what the ledger
+   * had counted at that moment, so later calls are added on top of `actualUsd`.
+   */
+  reconciled?: { actualUsd: number; countedUsd: number; at: string };
 };
 
 export function emptyLedger(): Ledger {
   return { spentUsd: 0, entries: [] };
 }
 
-/**
- * A call may start only if everything already spent, plus everything in
- * flight (`reservedUsd`), plus this call stays within the ceiling.
- */
-export function canSpend(ledger: Ledger, reservedUsd: number, costUsd: number, ceilingUsd: number): boolean {
-  return round(ledger.spentUsd + reservedUsd + costUsd) <= ceilingUsd + 1e-9;
-}
-
-export function remaining(ledger: Ledger, ceilingUsd: number): number {
-  return round(Math.max(0, ceilingUsd - ledger.spentUsd));
+/** List price × safety factor (fal's real bill ran ~12% above list prices in the smoke test). */
+export function withMargin(usd: number, factor = COST_SAFETY_FACTOR): number {
+  return round(usd * factor);
 }
 
 /**
- * Of the planned items (in order), which fit under the ceiling. Used by the
- * plan printout: anything past the first item that does not fit is cut.
+ * What the ceiling is checked against:
+ * max(counted × factor, reconciled actual + (counted since reconcile) × factor).
  */
-export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: number): { fit: PlanItem[]; cut: PlanItem[] } {
-  let budget = remaining(ledger, ceilingUsd);
+export function effectiveSpent(ledger: Ledger, factor = COST_SAFETY_FACTOR): number {
+  const counted = ledger.spentUsd * factor;
+  const r = ledger.reconciled;
+  const fromActual = r ? r.actualUsd + Math.max(0, ledger.spentUsd - r.countedUsd) * factor : 0;
+  return round(Math.max(counted, fromActual));
+}
+
+/**
+ * A call may start only if the effective spend, plus everything in flight
+ * (`reservedUsd`, list prices), plus this call — both with the safety
+ * factor — stays within the ceiling.
+ */
+export function canSpend(ledger: Ledger, reservedUsd: number, costUsd: number, ceilingUsd: number, factor = COST_SAFETY_FACTOR): boolean {
+  return round(effectiveSpent(ledger, factor) + (reservedUsd + costUsd) * factor) <= ceilingUsd + 1e-9;
+}
+
+/** Ceiling minus the effective spend (in margin dollars). */
+export function remaining(ledger: Ledger, ceilingUsd: number, factor = COST_SAFETY_FACTOR): number {
+  return round(Math.max(0, ceilingUsd - effectiveSpent(ledger, factor)));
+}
+
+/**
+ * Of the planned items (in order), which fit under the ceiling (each item
+ * costs list price × factor). Used by the plan printout and the B0 forecast.
+ */
+export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: number, factor = COST_SAFETY_FACTOR): { fit: PlanItem[]; cut: PlanItem[] } {
+  let budget = remaining(ledger, ceilingUsd, factor);
   const fit: PlanItem[] = [];
   const cut: PlanItem[] = [];
   for (const item of items) {
@@ -131,9 +155,10 @@ export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: n
       fit.push(item);
       continue;
     }
-    if (item.costUsd <= budget + 1e-9) {
+    const cost = item.costUsd * factor;
+    if (cost <= budget + 1e-9) {
       fit.push(item);
-      budget = round(budget - item.costUsd);
+      budget = round(budget - cost);
     } else {
       cut.push(item);
     }
@@ -144,7 +169,13 @@ export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: n
 /** Records a finished call. Failures with an unknown outcome are counted as charged (conservative). */
 export function record(ledger: Ledger, entry: Ledger["entries"][number]): Ledger {
   const charged = entry.status === "failed-free" ? 0 : entry.usd;
-  return { spentUsd: round(ledger.spentUsd + charged), entries: [...ledger.entries, { ...entry, usd: charged }] };
+  return { ...ledger, spentUsd: round(ledger.spentUsd + charged), entries: [...ledger.entries, { ...entry, usd: charged }] };
+}
+
+/** Stores the actual fal.ai total; the ceiling then counts from it. */
+export function reconcile(ledger: Ledger, actualUsd: number, at = new Date().toISOString()): Ledger {
+  if (!(actualUsd >= 0) || !Number.isFinite(actualUsd)) throw new Error(`--actual must be a dollar amount, got ${actualUsd}`);
+  return { ...ledger, reconciled: { actualUsd: round(actualUsd), countedUsd: ledger.spentUsd, at } };
 }
 
 export function formatUsd(usd: number): string {

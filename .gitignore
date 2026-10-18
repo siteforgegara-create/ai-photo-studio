@@ -51,3 +51,7 @@ next-env.d.ts
 
 # MediaPipe runtime (copied on postinstall)
 /public/vendor/
+
+# B0 benchmark: photos of real people and generated results never go to git (docs/07 §1, §9)
+/bench/subjects/
+/bench/runs/

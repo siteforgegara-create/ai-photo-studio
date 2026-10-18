@@ -1,0 +1,5 @@
+[
+  { "id": "real-01", "type": "real", "gender": "female", "ageGroup": "25-35", "skinTone": "light" },
+  { "id": "real-02", "type": "real", "gender": "male", "ageGroup": "35-50", "skinTone": "medium" },
+  { "id": "real-03", "type": "real", "gender": "female", "ageGroup": "50-65", "skinTone": "brown" }
+]

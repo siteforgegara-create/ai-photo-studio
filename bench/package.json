@@ -1,0 +1,5 @@
+{
+  "//": "ESM scope for the B0 benchmark scripts (top-level await, import.meta). Dependencies live in the root package.json.",
+  "type": "module",
+  "private": true
+}

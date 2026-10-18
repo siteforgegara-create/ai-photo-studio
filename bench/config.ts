@@ -210,6 +210,15 @@ export const ANALYZE = {
   pricing: { kind: "per_image", usd: 0.003 } as Pricing,
   marginFactor: 1.5, // token billing, not yet confirmed by the bill
   maxTokens: 400,
+  /**
+   * Second call per subject: all selfies (≤ 8) in one request, hair and eye
+   * color only, judged across the photos with lighting discounted. ~8 images ×
+   * ~1,300 tokens + prompt ≈ 11k input tokens ($0.0033) + ≤ 120 output tokens
+   * → planned at $0.006 per subject (same ×1.5 margin; the first 30 per-selfie
+   * calls cost $0.09 at plan = fal.ai Usage, so the plan is not optimistic).
+   */
+  colorPricing: { kind: "per_image", usd: 0.006 } as Pricing,
+  colorMaxTokens: 120,
   sources: [
     { url: "https://fal.ai/models/openrouter/router/vision", checked: PRICES_CHECKED, note: "charged by input and output tokens; returns usage.cost" },
     { url: "https://openrouter.ai/google/gemini-2.5-flash", checked: PRICES_CHECKED, note: "$0.30 per 1M input tokens, $2.50 per 1M output tokens" },

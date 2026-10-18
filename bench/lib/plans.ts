@@ -7,7 +7,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { shootStyles } from "../../src/config/styles";
 import { ANALYZE, PERSONAS, UPSCALE, type BenchModel } from "../config";
-import type { SubjectAttributes, SelfieAttributes } from "./attributes";
+import { voteAttributes, withColors, type ColorReading, type SelfieAttributes, type SubjectAttributes } from "./attributes";
 import { callCost, type PlanItem, type Size } from "./cost";
 import { frameCost } from "./models";
 import { runDir, SUBJECTS_DIR } from "./paths";
@@ -86,7 +86,34 @@ export type AttributesFile = SubjectAttributes & {
   model: string;
   analyzedAt: string;
   readings: { file: string; sha1: string; reading: SelfieAttributes; actualUsd?: number }[];
+  /** All-selfies color call: valid while `selfies` (name + sha1) equal the current selfies. */
+  colors?: ColorReading & { selfies: { file: string; sha1: string }[]; at: string; actualUsd?: number };
 };
+
+/**
+ * What the prompt uses, built from attributes.json at the moment of the run:
+ * the vote recomputed from the stored per-selfie readings (current rules),
+ * hair / eye color from the all-selfies call when present.
+ */
+export function finalAttributes(f: AttributesFile): Pick<SubjectAttributes, "kept" | "marks"> {
+  const vote = f.readings?.length ? voteAttributes(f.subject, f.readings.map((r) => r.reading)) : f;
+  return withColors(vote, f.colors);
+}
+
+/** name + sha1 of the selfies the color call must cover. */
+export function selfieFingerprint(s: Subject): { file: string; sha1: string }[] {
+  return analyzedSelfies(s).map((f) => ({ file: path.basename(f), sha1: existsSync(f) ? fileSha1(f) : "" }));
+}
+
+/** One all-selfies color call per subject; cached while the selfies are unchanged. */
+export function analyzeColorItems(subjects: Subject[], runId: string, invalid: Set<string> = new Set()): (PlanItem & { subject: Subject })[] {
+  const price = callCost(ANALYZE.colorPricing);
+  return subjects.map((s) => {
+    const prev = s.planned || invalid.has(s.id) ? null : readAttributes(runId, s.id);
+    const cached = Boolean(prev?.colors && !s.planned && JSON.stringify(prev.colors.selfies) === JSON.stringify(selfieFingerprint(s)));
+    return { key: `${s.id}/analyze-colors/all`, group: "hair & eye color (all selfies)", label: `${s.id} · colors from ${analyzedSelfies(s).length} selfies`, costUsd: price, cached, subject: s };
+  });
+}
 
 export const attributesFile = (runId: string, subject: string) => path.join(runDir(runId), subject, "attributes.json");
 

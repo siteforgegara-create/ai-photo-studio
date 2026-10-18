@@ -8,7 +8,7 @@
 import path from "node:path";
 import { ABLATION, DEMO, FORECAST, LORA, MODELS, PERSONAS, PLANNED_REAL_SUBJECTS, SPEND_CEILING_USD } from "../config";
 import { PERSONA_SPECS } from "../prompts";
-import type { SubjectAttributes } from "./attributes";
+import type { PromptAttributes } from "./attributes";
 import { effectiveSpent, round, summarize, type Size } from "./cost";
 import { chooseCuts, cutOptions, type CutOption, type Forecast, type ForecastStep } from "./forecast";
 import { normalizeSelfie } from "./images";
@@ -16,7 +16,7 @@ import { loadLedger } from "./ledger";
 import { readLog } from "./log";
 import { PLANNED_SELFIE_SIZE } from "./models";
 import { runDir, SUBJECTS_DIR } from "./paths";
-import { analyzeItems, demoItems, pendingRedo, personaItems, readAttributes, upscaleItems } from "./plans";
+import { analyzeColorItems, analyzeItems, demoItems, finalAttributes, pendingRedo, personaItems, readAttributes, upscaleItems } from "./plans";
 import { ablationSubjectIds, buildRunPlan } from "./run-plan";
 import { loadSubjects, type Subject } from "./subjects";
 
@@ -67,7 +67,12 @@ export async function buildB0Forecast(runId: string, opts: { redo?: string[]; ab
     selfieSizes.set(s.id, sizes);
   }
 
-  const attrs = new Map<string, SubjectAttributes | null>(subjects.map((s) => [s.id, s.planned || redoSet.has(s.id) ? null : readAttributes(runId, s.id)]));
+  const attrs = new Map<string, PromptAttributes | null>(
+    subjects.map((s) => {
+      const f = s.planned || redoSet.has(s.id) ? null : readAttributes(runId, s.id);
+      return [s.id, f ? finalAttributes(f) : null];
+    }),
+  );
   // Frames of personas being regenerated are deleted by --redo: never adopt them.
   const log = readLog(path.join(runDir(runId), "log.jsonl")).filter((l) => !l.subject || !redoSet.has(l.subject));
   const available = new Set(subjects.map((s) => s.id));
@@ -90,7 +95,7 @@ export async function buildB0Forecast(runId: string, opts: { redo?: string[]; ab
     });
     return [
       { name: `personas --redo (${redo.join(", ") || "none"})`, items: personaItems(PERSONA_SPECS.filter((p) => redoSet.has(p.id)), redoSet) },
-      { name: "analyze (vision, per selfie)", items: analyzeItems(subjects, runId, redoSet) },
+      { name: "analyze (per selfie + colors per subject)", items: [...analyzeItems(subjects, runId, redoSet), ...analyzeColorItems(subjects, runId, redoSet)] },
       { name: `run: 4 models + LoRA (${LORA.steps} steps)`, items: [...(plan.loraTrain ? [plan.loraTrain] : []), ...plan.frames] },
       { name: `run: ablation ${ABLATION.key} (${ablationIds.join(", ")})`, items: plan.ablation },
       { name: "upscale", items: upscaleItems(runId) },

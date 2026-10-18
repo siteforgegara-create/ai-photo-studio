@@ -3,7 +3,8 @@
  * in spend.json (also the ones written before margins existed) gets the
  * margin of its model. Keys:
  *   synth-01/reference, synth-01/selfie-3        personas (Qwen)
- *   real-01/analyze/selfie-1.jpg                  analysis (vision)
+ *   real-01/analyze/selfie-1.jpg                  analysis (vision), per selfie
+ *   real-01/analyze-colors/all                    analysis, all selfies → hair / eye color
  *   real-01/<model>/<style>-<n>                   frames (nb21-noattr → nb21)
  *   real-01/lora/train, real-01/lora/<style>-<n>  LoRA
  *   upscale/…                                     upscale
@@ -17,7 +18,7 @@ export function marginForKey(key: string): number {
   if (parts.length === 2 && parts[1] === "reference") return PERSONAS.referenceMargin;
   if (parts.length === 2 && /^selfie-\d+$/.test(parts[1]!)) return PERSONAS.selfieMargin;
   const kind = parts[1];
-  if (kind === "analyze") return ANALYZE.marginFactor;
+  if (kind === "analyze" || kind === "analyze-colors") return ANALYZE.marginFactor;
   if (kind === "lora") return parts[2] === "train" ? LORA.trainMargin : LORA.generateMargin;
   if (kind === ABLATION.key) return MODELS[ABLATION.baseModel].marginFactor;
   const model = kind ? (MODELS as Record<string, { marginFactor: number }>)[kind] : undefined;

@@ -8,15 +8,22 @@
  *   npm run bench:analyze -- --dry-run
  *   npm run bench:analyze [-- --subjects=synth-02,synth-05 --run=… --yes]
  *
- * Output: bench/runs/<run>/<subject>/attributes.json (per-selfie readings +
- * the vote; < 60% agreement → dropped). bench:run puts the kept attributes
- * into every prompt. For synth-* the vote is compared with subjects.json
- * "truth" — accuracy per attribute in attributes-accuracy.json (and report.md).
+ * Two kinds of calls:
+ *   1. every selfie separately → all visible attributes, majority vote
+ *      (< 60% agreement → dropped);
+ *   2. one call per subject with ALL selfies → hair and eye color only,
+ *      judged across the photos with warm / cool lighting discounted. The
+ *      prompt uses these colors; the per-selfie vote is kept for comparison.
+ * Both are cached: a selfie / a set of selfies already analyzed is not sent again.
+ *
+ * Output: bench/runs/<run>/<subject>/attributes.json. bench:run builds the
+ * "Subject details" line from this file when it starts. For synth-* the result
+ * is compared with subjects.json "truth" — attributes-accuracy.json and report.md.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ANALYZE, MAX_CONCURRENCY } from "./config";
-import { accuracyTable, sanitizeReading, visionPrompt, VISION_SYSTEM_PROMPT, voteAttributes, attributesLine, type AttributeTruth } from "./lib/attributes";
+import { accuracyTable, attributesLine, colorPrompt, sanitizeReading, visionPrompt, VISION_SYSTEM_PROMPT, voteAttributes, type AccuracyRow, type AttributeTruth } from "./lib/attributes";
 import { confirm, fail, parseCommonArgs, printPlan } from "./lib/cli";
 import { callCost, formatUsd } from "./lib/cost";
 import { getFalKey } from "./lib/env";
@@ -25,7 +32,7 @@ import { upload } from "./lib/fal";
 import { normalizeSelfie } from "./lib/images";
 import { Spend } from "./lib/ledger";
 import { resolveRunId, runDir } from "./lib/paths";
-import { analyzedSelfies, analyzeItems, attributesFile, fileSha1, readAttributes, type AttributesFile } from "./lib/plans";
+import { analyzeColorItems, analyzedSelfies, analyzeItems, attributesFile, fileSha1, finalAttributes, readAttributes, selfieFingerprint, type AttributesFile } from "./lib/plans";
 import { runPool } from "./lib/pool";
 import { subjectsForPlan, truthFor, validateSubject } from "./lib/subjects";
 
@@ -43,10 +50,12 @@ const issues = subjects.filter((s) => !s.planned).flatMap(validateSubject).filte
 if (issues.length && !args.dryRun) fail(`Fix the subjects first:\n  ${issues.join("\n  ")}`);
 
 const items = analyzeItems(subjects, runId);
+const colorItems = analyzeColorItems(subjects, runId);
 console.log(`Run: bench/runs/${runId}   Subjects: ${subjects.map((s) => s.id).join(", ")}${subjects.some((s) => s.planned) ? "  (PLANNED — no photos yet)" : ""}`);
 console.log(`Vision: ${ANALYZE.endpoint} · ${ANALYZE.model}, temperature 0, planned ${formatUsd(callCost(ANALYZE.pricing))} per selfie (${ANALYZE.sources.map((s) => `${s.url}: ${s.note}`).join("; ")}; checked ${ANALYZE.sources[0]!.checked})`);
+console.log(`Colors: one call per subject with all selfies, planned ${formatUsd(callCost(ANALYZE.colorPricing))} each.`);
 console.log("Visible attributes only — race, ethnicity and age are never requested or stored.");
-const runnable = new Set(printPlan("bench:analyze", items, spend.snapshot()).map((i) => i.key));
+const runnable = new Set(printPlan("bench:analyze", [...items, ...colorItems], spend.snapshot()).map((i) => i.key));
 if (args.dryRun) {
   console.log("\nDry run — nothing was called.");
   process.exit(0);
@@ -59,7 +68,8 @@ for (const s of subjects) {
   const prev = readAttributes(runId, s.id);
   const readings = new Map((prev?.readings ?? []).map((r) => [r.file, r]));
   const todo = items.filter((i) => i.subject.id === s.id && runnable.has(i.key));
-  if (todo.length) console.log(`\n▶ ${s.id}`);
+  const colorItem = colorItems.find((i) => i.subject.id === s.id && runnable.has(i.key));
+  if (todo.length || colorItem) console.log(`\n▶ ${s.id}`);
   const jobs = todo.map((it) => async () => {
     const name = path.basename(it.file);
     const sha = fileSha1(it.file);
@@ -85,14 +95,41 @@ for (const s of subjects) {
   });
   await runPool(jobs, MAX_CONCURRENCY);
 
+  // All selfies in one request → hair and eye color with lighting discounted.
+  const fingerprint = selfieFingerprint(s);
+  let colors = prev?.colors && JSON.stringify(prev.colors.selfies) === JSON.stringify(fingerprint) ? prev.colors : undefined;
+  if (colorItem) {
+    const urls: string[] = [];
+    for (const f of analyzedSelfies(s)) urls.push(await upload((await normalizeSelfie(f)).buffer, "image/jpeg", `${s.id}-${path.basename(f)}`));
+    await execute<VisionResponse>(
+      {
+        key: colorItem.key,
+        kind: "analyze",
+        endpoint: ANALYZE.endpoint,
+        input: { model: ANALYZE.model, system_prompt: VISION_SYSTEM_PROMPT, prompt: colorPrompt(urls.length), image_urls: urls, temperature: 0, max_tokens: ANALYZE.colorMaxTokens, reasoning: false },
+        costUsd: colorItem.costUsd,
+        meta: { subject: s.id },
+        save: async (d) => {
+          const r = sanitizeReading(d.output);
+          if (!r.hairColor && !r.eyeColor) throw new Error("no usable JSON in the model answer");
+          colors = { hairColor: r.hairColor, eyeColor: r.eyeColor, selfies: fingerprint, at: new Date().toISOString(), actualUsd: d.usage?.cost };
+          return { file: `${s.id}/colors`, actualUsd: d.usage?.cost };
+        },
+      },
+      spend,
+      LOG,
+    );
+  }
+
   // Vote over the readings of the current selfies only.
   const current = analyzedSelfies(s).map((f) => readings.get(path.basename(f))).filter((r): r is NonNullable<typeof r> => Boolean(r));
   const vote = voteAttributes(s.id, current.map((r) => r.reading), analyzedSelfies(s).length);
-  const out: AttributesFile = { ...vote, endpoint: ANALYZE.endpoint, model: ANALYZE.model, analyzedAt: new Date().toISOString(), readings: current };
+  const out: AttributesFile = { ...vote, endpoint: ANALYZE.endpoint, model: ANALYZE.model, analyzedAt: new Date().toISOString(), readings: current, ...(colors ? { colors } : {}) };
   mkdirSync(path.dirname(attributesFile(runId, s.id)), { recursive: true });
   writeFileSync(attributesFile(runId, s.id), JSON.stringify(out, null, 2));
   results.push(out);
-  console.log(`  ${s.id}: ${current.length}/${analyzedSelfies(s).length} selfies read → ${attributesLine(vote)}`);
+  console.log(`  ${s.id}: ${current.length}/${analyzedSelfies(s).length} selfies read; colors (all selfies): hair ${colors?.hairColor ?? "—"}, eyes ${colors?.eyeColor ?? "—"} (vote: hair ${vote.kept.hairColor?.value ?? "dropped"}, eyes ${vote.kept.eyeColor?.value ?? "dropped"})`);
+  console.log(`     prompt line: ${attributesLine(finalAttributes(out))}`);
   if (vote.dropped.length) console.log(`     dropped (< 60% agreement): ${vote.dropped.map((d) => `${d.key}${d.best ? ` (${d.best} ${Math.round(d.agreement * 100)}%)` : ""}`).join(", ")}`);
 }
 
@@ -103,9 +140,17 @@ for (const s of subjects) if (s.type === "synth") {
   if (t) truths.set(s.id, t);
 }
 if (truths.size) {
-  const table = accuracyTable(results.filter((r) => truths.has(r.subject)), truths);
-  writeFileSync(path.join(RUN, "attributes-accuracy.json"), JSON.stringify({ run: runId, at: new Date().toISOString(), personas: [...truths.keys()], table }, null, 2));
-  console.log(`\nAccuracy vs truth (${truths.size} personas): attribute — correct / compared (dropped)`);
-  for (const r of table.filter((r) => r.compared)) console.log(`  ${r.key.padEnd(12)} ${r.correct}/${r.compared}${r.dropped ? ` (${r.dropped} dropped)` : ""}${r.wrong.length ? `  wrong: ${r.wrong.map((w) => `${w.subject} ${w.truth}→${w.got}`).join(", ")}` : ""}`);
+  const synth = results.filter((r) => truths.has(r.subject));
+  const table = accuracyTable(synth.map((r) => ({ subject: r.subject, kept: finalAttributes(r).kept })), truths);
+  const voteTable = accuracyTable(synth, truths); // hair / eye color from the per-selfie vote, for comparison
+  writeFileSync(path.join(RUN, "attributes-accuracy.json"), JSON.stringify({ run: runId, at: new Date().toISOString(), personas: [...truths.keys()], table, voteTable }, null, 2));
+  const fmtRow = (r: AccuracyRow) =>
+    `${r.correct}/${r.compared}${r.approx ? ` (~${r.approx})` : ""}${r.close.length ? `, close ${r.close.length}` : ""}${r.dropped ? `, dropped ${r.dropped}` : ""}${r.wrong.length ? `  wrong: ${r.wrong.map((w) => `${w.subject} ${w.truth}→${w.got}`).join(", ")}` : ""}${r.close.length ? `  close: ${r.close.map((w) => `${w.subject} ${w.truth}→${w.got}`).join(", ")}` : ""}`;
+  console.log(`\nAccuracy vs truth (${truths.size} personas): correct / compared (~ = neighbouring value counted as a match; close = skin tone one step off, not a match)`);
+  for (const r of table.filter((r) => r.compared)) console.log(`  ${r.key.padEnd(12)} ${fmtRow(r)}`);
+  for (const key of ["hairColor", "eyeColor"] as const) {
+    const v = voteTable.find((r) => r.key === key);
+    if (v?.compared) console.log(`  ${`${key} (vote)`.padEnd(12)} ${fmtRow(v)}`);
+  }
 }
 console.log(`\nCounted so far: ${formatUsd(spend.spent)} at list prices. Next: npm run bench:run -- --dry-run`);

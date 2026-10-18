@@ -15,7 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import path from "node:path";
 import { zipSync } from "fflate";
 import { ABLATION, LORA, MAX_CONCURRENCY, MODELS, OUTPUT, type BenchModel } from "./config";
-import type { SubjectAttributes } from "./lib/attributes";
+import { attributesLine, type PromptAttributes } from "./lib/attributes";
 import { buildB0Forecast } from "./lib/b0-forecast";
 import { formatUsd, type PlanItem, type Size } from "./lib/cost";
 import { getFalKey } from "./lib/env";
@@ -27,7 +27,7 @@ import { Spend } from "./lib/ledger";
 import { appendLog, readLog } from "./lib/log";
 import { buildFrameInput, buildLoraFrameInput, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse, type LoraTrainResponse } from "./lib/models";
 import { resolveRunId, runDir } from "./lib/paths";
-import { readAttributes } from "./lib/plans";
+import { finalAttributes, readAttributes } from "./lib/plans";
 import { runPool } from "./lib/pool";
 import { ablationSubjectIds, buildRunPlan, type FrameItem } from "./lib/run-plan";
 import { subjectsForPlan, validateSubject, type Subject } from "./lib/subjects";
@@ -57,10 +57,12 @@ const loraSubject: Subject | undefined = withLora
 if (withLora && args.loraSubject && !loraSubject) fail(`--lora-subject=${args.loraSubject} is not among the subjects.`);
 
 // Attributes from bench:analyze (the "Subject details" line).
-const attrs = new Map<string, SubjectAttributes | null>();
+// Built from attributes.json NOW (vote re-run on the stored readings + the all-selfies colors), not from an earlier printout.
+const attrs = new Map<string, PromptAttributes | null>();
 const missingAttrs: string[] = [];
 for (const s of subjects) {
-  const a = args.noAttrs || s.planned ? null : readAttributes(runId, s.id);
+  const file = args.noAttrs || s.planned ? null : readAttributes(runId, s.id);
+  const a = file ? finalAttributes(file) : null;
   attrs.set(s.id, a);
   if (!args.noAttrs && !a) missingAttrs.push(s.id);
 }
@@ -118,7 +120,7 @@ console.log(`Models: ${models.map((m) => `${m.key} → ${m.endpoint} (${m.source
 if (loraSubject) console.log(`        lora → ${LORA.trainEndpoint} + ${LORA.generateEndpoint} on ${loraSubject.id}`);
 if (plan.ablation.length) console.log(`        ${ABLATION.key} → ${MODELS[ABLATION.baseModel].endpoint} without the attribute line, on ${ablationIds.join(", ")}${plan.ablation.some((f) => f.adopt) ? ` (${plan.ablation.filter((f) => f.adopt).length} smoke-test frames reused — identical request)` : ""}`);
 console.log(`Prompts: ${args.noAttrs ? "WITHOUT the attribute line (--no-attrs)" : "with the voted attributes of each subject"}.`);
-for (const s of subjects) if (attrs.get(s.id)) console.log(`  ${s.id}: ${plan.frames.find((f) => f.subject.id === s.id && f.prompt)?.prompt?.match(/Subject details[^]*$/)?.[0] ?? ""}`);
+for (const s of subjects) if (attrs.get(s.id)) console.log(`  ${s.id}: ${attributesLine(attrs.get(s.id)!)}`);
 console.log(`Output: ${OUTPUT.width}×${OUTPUT.height} class (Seedream 1728×2160 — its minimum). Prices checked ${MODELS.nb21.source.checked}.`);
 for (const m of Object.values(MODELS)) if (m.note) console.log(`  · ${m.label}: ${m.note}`);
 const planItems: PlanItem[] = [...(loraTrain ? [loraTrain] : []), ...frames];

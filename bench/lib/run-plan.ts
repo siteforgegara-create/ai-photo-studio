@@ -13,7 +13,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { ABLATION, BENCH_STYLES, FRAMES_PER_STYLE, LORA, MODELS, type BenchModel } from "../config";
 import { generationPrompt } from "../prompts";
-import { attributesLine, type SubjectAttributes } from "./attributes";
+import { attributesLine, type PromptAttributes } from "./attributes";
 import type { PlanItem, Size } from "./cost";
 import type { CallLog } from "./log";
 import { frameCost, loraFrameCost, loraTrainCost, seedFor } from "./models";
@@ -47,7 +47,7 @@ export type RunPlanInput = {
   loraSubject?: Subject;
   selfieSizes: Map<string, Size[]>;
   /** Voted attributes per subject id; missing → unknown prompt. */
-  attrs: Map<string, SubjectAttributes | null>;
+  attrs: Map<string, PromptAttributes | null>;
   noAttrs: boolean;
   ablationSubjects: Subject[];
   log: CallLog[];

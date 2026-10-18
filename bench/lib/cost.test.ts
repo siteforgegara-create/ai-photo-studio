@@ -113,6 +113,7 @@ describe("per-model margins, reconciliation, demo outside B0", () => {
     expect(marginForKey("real-01/lora/modern-office-2")).toBe(1.1);
     expect(marginForKey("upscale/real-01/nbpro/x.jpg")).toBe(1.2);
     expect(marginForKey("real-01/analyze/selfie-1.jpg")).toBe(1.5);
+    expect(marginForKey("synth-01/analyze-colors/all")).toBe(1.5);
     expect(marginForKey("something/unknown")).toBe(1.2);
   });
 

@@ -50,8 +50,10 @@ bench/subjects/
 - **Каждое селфи отдельно.** Только видимые признаки: цвет глаз, цвет волос, длина волос, текстура волос, тон кожи (fair / light / medium / olive / brown / deep), веснушки, очки, растительность на лице, заметные приметы.
 - **Запрещено** определять и записывать расу, этническое происхождение и возраст числом (не спрашивается в промпте, отбрасывается при разборе ответа).
 - Итог по участнику — голосование большинством по селфи; признак с согласием ниже 60% отбрасывается. Результат: `bench/runs/<run>/<subject>/attributes.json`.
-- Для synth-* итог сравнивается с `truth` — точность по каждому признаку (отдельная таблица в `report.md`).
-- В `bench:run` все модели (и LoRA) получают в конце промпта строку: «Subject details (preserve exactly): green eyes, auburn shoulder-length straight hair, fair skin with freckles. Preserve apparent age exactly.»
+- **Цвета волос и глаз — отдельным вызовом:** все селфи участника в одном запросе, вопрос только про hairColor и eyeColor с поправкой на освещение («judge the true color across all photos, ignoring warm/cool lighting»). В промпт идёт этот цвет; голосование по отдельным селфи остаётся для остальных признаков и для сравнения в отчёте.
+- Для synth-* итог сравнивается с `truth` — точность по каждому признаку (отдельная таблица в `report.md`). Синонимы: gray = grey = salt-and-pepper; chin-length и shoulder-length — соседние (совпадение с пометкой «~»); тон кожи на соседней ступени шкалы — «близко», показывается отдельно от точного совпадения.
+- В `bench:run` все модели (и LoRA) получают в конце промпта строку, собранную из `attributes.json` в момент запуска: «Subject details (preserve exactly): green eyes, auburn shoulder-length straight hair, freckles. Keep the exact skin tone and hair color from the photos. Preserve apparent age exactly.» **Тон кожи в строку не попадает** (при плохом свете в селфи модель могла бы осветлить или затемнить кожу); в `attributes.json` и в отчёте он остаётся.
+- Уже проанализированные селфи и наборы селфи не отправляются повторно (кэш по содержимому файлов).
 
 ## 3. Тестируемые модели
 

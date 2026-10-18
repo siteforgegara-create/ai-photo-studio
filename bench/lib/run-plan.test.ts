@@ -34,7 +34,7 @@ describe("buildRunPlan", () => {
   it("every main prompt carries the attribute line; the ablation group does not; 16 ablation frames for 4 subjects", () => {
     const p = buildRunPlan(base);
     expect(p.frames).toHaveLength(4 * 2 * 4);
-    expect(p.frames.every((f) => f.prompt?.endsWith("Subject details (preserve exactly): green eyes, fair skin. Preserve apparent age exactly."))).toBe(true);
+    expect(p.frames.every((f) => f.prompt?.endsWith("Subject details (preserve exactly): green eyes. Keep the exact skin tone and hair color from the photos. Preserve apparent age exactly."))).toBe(true);
     expect(p.ablation).toHaveLength(16);
     expect(p.ablation.every((f) => f.dir === "nb21-noattr" && f.prompt === generationPrompt(f.style))).toBe(true);
   });
@@ -73,5 +73,21 @@ describe("buildRunPlan", () => {
   it("frames of subjects without analyzed attributes cannot be cached (prompt unknown)", () => {
     const p = buildRunPlan({ ...base, attrs: new Map() });
     expect(p.frames.every((f) => f.prompt === null && !f.cached)).toBe(true);
+  });
+});
+
+describe("finalAttributes — the prompt line is built from attributes.json at run time", () => {
+  it("re-votes the stored readings with the current rules and applies the all-selfies colors", async () => {
+    const { finalAttributes } = await import("./plans");
+    const { attributesLine } = await import("./attributes");
+    const file = {
+      ...voteAttributes("synth-01", []), // stale stored vote: nothing kept
+      endpoint: "e",
+      model: "m",
+      analyzedAt: "t",
+      readings: [1, 2, 3].map((i) => ({ file: `s${i}.jpg`, sha1: String(i), reading: { eyeColor: "hazel", hairColor: "red", skinTone: "fair", freckles: "yes" } })),
+      colors: { hairColor: "auburn", eyeColor: "green", selfies: [], at: "t" },
+    };
+    expect(attributesLine(finalAttributes(file))).toBe("Subject details (preserve exactly): green eyes, auburn hair, freckles. Keep the exact skin tone and hair color from the photos. Preserve apparent age exactly.");
   });
 });

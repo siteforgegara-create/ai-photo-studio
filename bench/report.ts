@@ -10,7 +10,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { ABLATION, ANALYZE, FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
 import { accuracyTable, attributesLine, type AccuracyRow, type AttributeTruth } from "./lib/attributes";
-import { readAttributes } from "./lib/plans";
+import { finalAttributes, readAttributes } from "./lib/plans";
 import { effectiveSpent, formatUsd } from "./lib/cost";
 import { fail, parseCommonArgs } from "./lib/cli";
 import { loadLedger } from "./lib/ledger";
@@ -95,19 +95,42 @@ for (const s of scores.subjects) if (s.type === "synth") {
   const t = truthFor(s.id);
   if (t) truths.set(s.id, t);
 }
-const accuracy: AccuracyRow[] = accuracyTable(attrFiles.filter((a) => truths.has(a.subject)), truths);
+const synthFiles = attrFiles.filter((a) => truths.has(a.subject));
+// Final = what the prompt uses (hair / eye color from the all-selfies call); vote = per-selfie majority only.
+const accuracy: AccuracyRow[] = accuracyTable(synthFiles.map((a) => ({ subject: a.subject, kept: finalAttributes(a).kept })), truths);
+const voteAccuracy: AccuracyRow[] = accuracyTable(synthFiles, truths);
 const ATTR_LABEL: Record<string, string> = { eyeColor: "Цвет глаз", hairColor: "Цвет волос", hairLength: "Длина волос", hairTexture: "Текстура волос", skinTone: "Тон кожи", freckles: "Веснушки", glasses: "Очки", facialHair: "Растительность на лице" };
+const pairs = (list: { subject: string; truth: string; got: string }[]) => list.map((w) => `${w.subject}: ${w.truth} → ${w.got}`).join("; ") || "—";
+const accRow = (label: string, r: AccuracyRow) => `| ${label} | ${r.correct}${r.approx ? ` (~${r.approx})` : ""} | ${r.close.length || "—"} | ${r.compared} | ${r.dropped} | ${pairs(r.wrong)}${r.close.length ? ` · близко: ${pairs(r.close)}` : ""} |`;
 function accuracySection(): string {
   if (!attrFiles.length) return "_bench:analyze не запускался — признаков нет._";
-  const perSubject = attrFiles.map((a) => `| ${a.subject} | ${a.analyzed}/${a.selfies} | ${attributesLine(a).replace(/\|/g, "/")} | ${a.dropped.map((d) => d.key).join(", ") || "—"} |`).join("\n");
+  const perSubject = attrFiles
+    .map((a) => `| ${a.subject} | ${a.analyzed}/${a.selfies} | ${a.colors ? `${a.colors.hairColor ?? "—"} / ${a.colors.eyeColor ?? "—"}` : "—"} | ${a.kept.skinTone?.value ?? "—"} | ${attributesLine(finalAttributes(a)).replace(/\|/g, "/")} | ${a.dropped.map((d) => d.key).join(", ") || "—"} |`)
+    .join("\n");
   const acc = accuracy.filter((r) => r.compared);
+  const colorCompare = (["hairColor", "eyeColor"] as const)
+    .map((k) => {
+      const f = accuracy.find((r) => r.key === k)!;
+      const v = voteAccuracy.find((r) => r.key === k)!;
+      return f.compared ? `| ${ATTR_LABEL[k]} | ${v.correct}/${v.compared} (отброшено ${v.dropped}) | ${f.correct}/${f.compared} (отброшено ${f.dropped}) |` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
   const accTable = acc.length
-    ? `| Признак | Верно | Сравнено | Отброшено (< 60%) | Ошибки |\n|---|---|---|---|---|\n${acc.map((r) => `| ${ATTR_LABEL[r.key] ?? r.key} | ${r.correct} | ${r.compared} | ${r.dropped} | ${r.wrong.map((w) => `${w.subject}: ${w.truth} → ${w.got}`).join("; ") || "—"} |`).join("\n")}\n\nИтого верно: ${acc.reduce((a, r) => a + r.correct, 0)} из ${acc.reduce((a, r) => a + r.compared, 0)} сравнений.`
-    : "_Для synth-* нет поля truth в subjects.json._";
-  return `Модель: ${ANALYZE.model} через ${ANALYZE.endpoint}, каждое селфи отдельно, голосование большинством, порог согласия 60%. Только видимые признаки — раса, этническое происхождение и возраст числом не определяются и не записываются.
+    ? `| Признак | Верно | Близко | Сравнено | Отброшено (< 60%) | Ошибки |\n|---|---|---|---|---|---|\n${acc.map((r) => accRow(ATTR_LABEL[r.key] ?? r.key, r)).join("\n")}
 
-| Участник | Селфи прочитано | Строка в промпте | Отброшено |
-|---|---|---|---|
+Итого верно: ${acc.reduce((a, r) => a + r.correct, 0)} из ${acc.reduce((a, r) => a + r.compared, 0)} сравнений. «~» — соседнее значение засчитано как совпадение (chin-length ↔ shoulder-length); gray = grey = salt-and-pepper. «Близко» — тон кожи на одну ступень шкалы fair–light–medium–olive–brown–deep, в «верно» не входит.
+
+### Цвета: голосование по отдельным селфи vs один вызов со всеми селфи
+
+| Признак | Голосование по селфи | Все селфи сразу (идёт в промпт) |
+|---|---|---|
+${colorCompare}`
+    : "_Для synth-* нет поля truth в subjects.json._";
+  return `Модель: ${ANALYZE.model} через ${ANALYZE.endpoint}. Два вида вызовов: каждое селфи отдельно (голосование большинством, порог 60%) и один вызов со всеми селфи — только цвет волос и глаз с поправкой на освещение. Только видимые признаки — раса, этническое происхождение и возраст числом не определяются и не записываются. Тон кожи в промпт не идёт (риск осветлить или затемнить кожу при плохом свете): строка всегда заканчивается «Keep the exact skin tone and hair color from the photos.»
+
+| Участник | Селфи прочитано | Волосы / глаза (все селфи) | Тон кожи (голосование) | Строка в промпте | Отброшено |
+|---|---|---|---|---|---|
 ${perSubject}
 
 ### Точность на синтетических персонажах (сравнение с truth)

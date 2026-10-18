@@ -168,9 +168,35 @@ export function voteAttributes(subject: string, readings: SelfieAttributes[], se
   return { subject, selfies, analyzed: of, kept, marks, dropped };
 }
 
+/** What the prompt line is built from. */
+export type PromptAttributes = Pick<SubjectAttributes, "kept" | "marks">;
+
+/** Hair and eye color from one request with all selfies at once (bench:analyze, second call per subject). */
+export type ColorReading = { hairColor?: string; eyeColor?: string };
+
+/**
+ * Attributes used for the prompt: the per-selfie vote, with hair and eye color
+ * replaced by the all-selfies color call when it gave a value (single selfies
+ * are thrown off by warm / cool light; the vote is kept for comparison).
+ */
+export function withColors(a: Pick<SubjectAttributes, "kept" | "marks">, colors?: ColorReading | null): Pick<SubjectAttributes, "kept" | "marks"> {
+  const kept = { ...a.kept };
+  for (const key of ["hairColor", "eyeColor"] as const) {
+    const v = colors?.[key];
+    if (v && v !== "unknown") kept[key] = { value: v, agreement: 1, votes: 1, of: 1 };
+  }
+  return { kept, marks: a.marks };
+}
+
+/** Fixed sentence at the end of every "Subject details" line. */
+export const KEEP_COLORS = "Keep the exact skin tone and hair color from the photos.";
+
 /**
  * The line every model gets in its prompt, e.g.
- * "Subject details (preserve exactly): green eyes, auburn shoulder-length straight hair, fair skin with freckles. Preserve apparent age exactly."
+ * "Subject details (preserve exactly): green eyes, auburn shoulder-length straight hair, freckles. Keep the exact skin tone and hair color from the photos. Preserve apparent age exactly."
+ *
+ * Skin tone is never named here (a selfie in bad light could make the model
+ * lighten or darken the skin) — it stays in attributes.json and the report.
  */
 export function attributesLine(a: Pick<SubjectAttributes, "kept" | "marks"> | null): string {
   const k = a?.kept ?? {};
@@ -186,31 +212,72 @@ export function attributesLine(a: Pick<SubjectAttributes, "kept" | "marks"> | nu
     const texture = hairTexture === "none" ? undefined : hairTexture;
     parts.push(`${[hairColor, length, texture].filter(Boolean).join(" ")} hair${hairLength === "tied back" ? " tied back" : ""}`);
   }
-  if (v("skinTone")) parts.push(`${v("skinTone")} skin${v("freckles") === "yes" ? " with freckles" : ""}`);
-  else if (v("freckles") === "yes") parts.push("freckles");
+  if (v("freckles") === "yes") parts.push("freckles");
   if (v("glasses") === "yes") parts.push("wears glasses");
   const fh = v("facialHair");
   // "none" is not written: "clean-shaven" reads oddly for women, and the base prompt already preserves the face.
   if (fh && fh !== "none") parts.push(fh);
   for (const m of a?.marks ?? []) parts.push(m.value);
   const details = parts.length ? `Subject details (preserve exactly): ${parts.join(", ")}. ` : "";
-  return `${details}Preserve apparent age exactly.`;
+  return `${details}${KEEP_COLORS} Preserve apparent age exactly.`;
 }
 
-export type AccuracyRow = { key: EnumKey; compared: number; correct: number; dropped: number; wrong: { subject: string; truth: string; got: string }[] };
+// ─── Comparison with truth ──────────────────────────────────────────────────
 
-/** Per attribute: of the synthetic personas with a truth value, how many the vote got right / dropped / wrong. */
-export function accuracyTable(results: SubjectAttributes[], truths: Map<string, AttributeTruth>): AccuracyRow[] {
+/**
+ * exact — same value (hair color: gray = grey = salt-and-pepper);
+ * approx — neighbouring hair length (chin-length ↔ shoulder-length), counted as a match but marked "~";
+ * close — neighbouring skin-tone step, shown separately, NOT counted as a match;
+ * wrong — anything else.
+ */
+export type Match = "exact" | "approx" | "close" | "wrong";
+
+const HAIR_COLOR_SAME: Record<string, string> = { "salt-and-pepper": "gray", grey: "gray" };
+const NEIGHBOUR_LENGTHS = new Set(["chin-length|shoulder-length", "shoulder-length|chin-length"]);
+
+export function compareValue(key: EnumKey, truth: string, got: string): Match {
+  if (truth === got) return "exact";
+  if (key === "hairColor" && (HAIR_COLOR_SAME[truth] ?? truth) === (HAIR_COLOR_SAME[got] ?? got)) return "exact";
+  if (key === "hairLength" && NEIGHBOUR_LENGTHS.has(`${truth}|${got}`)) return "approx";
+  if (key === "skinTone") {
+    const scale = VOCAB.skinTone as readonly string[];
+    const d = Math.abs(scale.indexOf(truth) - scale.indexOf(got));
+    if (scale.includes(truth) && scale.includes(got) && d === 1) return "close";
+  }
+  return "wrong";
+}
+
+export type AccuracyRow = {
+  key: EnumKey;
+  compared: number;
+  /** Matches, including `approx` ones. */
+  correct: number;
+  /** Of `correct`: neighbouring values counted as a match ("~"). */
+  approx: number;
+  /** Skin tone one step off: shown separately, not a match. */
+  close: { subject: string; truth: string; got: string }[];
+  dropped: number;
+  wrong: { subject: string; truth: string; got: string }[];
+};
+
+/** Per attribute: of the synthetic personas with a truth value, how many were right / near / dropped / wrong. */
+export function accuracyTable(results: { subject: string; kept: SubjectAttributes["kept"] }[], truths: Map<string, AttributeTruth>): AccuracyRow[] {
   return ENUM_KEYS.map((key) => {
-    const row: AccuracyRow = { key, compared: 0, correct: 0, dropped: 0, wrong: [] };
+    const row: AccuracyRow = { key, compared: 0, correct: 0, approx: 0, close: [], dropped: 0, wrong: [] };
     for (const r of results) {
       const truth = truths.get(r.subject)?.[key];
       if (!truth) continue;
       row.compared += 1;
       const got = r.kept[key]?.value;
-      if (!got) row.dropped += 1;
-      else if (got === truth) row.correct += 1;
-      else row.wrong.push({ subject: r.subject, truth, got });
+      if (!got) {
+        row.dropped += 1;
+        continue;
+      }
+      const m = compareValue(key, truth, got);
+      if (m === "exact" || m === "approx") row.correct += 1;
+      if (m === "approx") row.approx += 1;
+      if (m === "close") row.close.push({ subject: r.subject, truth, got });
+      if (m === "wrong") row.wrong.push({ subject: r.subject, truth, got });
     }
     return row;
   });
@@ -224,6 +291,20 @@ function round2(v: number) {
 
 export const VISION_SYSTEM_PROMPT =
   "You describe only what is visible in a photo, for a photo-editing quality check. Never mention, guess or infer race, ethnicity, ethnic origin, nationality or age. Answer with a single JSON object and nothing else.";
+
+/** All selfies of one subject in one request → hair and eye color only, corrected for lighting. */
+export function colorPrompt(photos: number): string {
+  return [
+    `These ${photos} photos show the same person under different lighting.`,
+    "Judge the person's TRUE natural hair color and eye color across all photos, ignoring warm/cool lighting, color casts, shadows, white balance and camera processing.",
+    "Return exactly this JSON object:",
+    "{",
+    `  "hair_color": one of ${VOCAB.hairColor.map((v) => `"${v}"`).join(", ")},`,
+    `  "eye_color": one of ${VOCAB.eyeColor.map((v) => `"${v}"`).join(", ")}`,
+    "}",
+    'Use "unknown" only if it cannot be judged from any photo. Do not add any other keys. Do not describe race, ethnicity, nationality or age.',
+  ].join("\n");
+}
 
 /** One selfie → JSON with the fixed vocabulary (snake_case keys, one value per key). */
 export function visionPrompt(): string {

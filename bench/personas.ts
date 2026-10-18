@@ -1,6 +1,7 @@
 /**
  * Step A (docs/07 §2): five synthetic personas — a frontal reference portrait
- * and six "bad selfies" each, made with a model that is not under test.
+ * and six "bad selfies" each, made with Qwen models (not under test):
+ * Qwen Image (text-to-image) for the reference, Qwen Image Edit 2511 for the selfies.
  *
  *   npm run bench:personas -- --dry-run
  *   npm run bench:personas [-- --yes]
@@ -25,25 +26,28 @@ import { MAX_CONCURRENCY } from "./config";
 const args = parseCommonArgs();
 const spend = new Spend();
 const LOG = path.join(RUNS_DIR, "personas-log.jsonl");
-const price = callCost(PERSONAS.pricing);
+const refPrice = callCost(PERSONAS.referencePricing, { output: PERSONAS.referenceSize });
+const selfiePrice = callCost(PERSONAS.selfiePricing, { output: PERSONAS.selfieSize });
 const personas = args.subjects ? PERSONA_SPECS.filter((p) => args.subjects!.includes(p.id)) : PERSONA_SPECS;
 
 const refFile = (id: string) => path.join(SUBJECTS_DIR, id, "reference.jpg");
 const selfieFile = (id: string, n: number) => path.join(SUBJECTS_DIR, id, "selfies", `selfie-${n}.jpg`);
 
 const items: PlanItem[] = personas.flatMap((p) => [
-  { key: `${p.id}/reference`, group: "reference portrait", label: `${p.id} reference`, costUsd: price, cached: existsSync(refFile(p.id)) },
+  { key: `${p.id}/reference`, group: "reference portrait", label: `${p.id} reference`, costUsd: refPrice, cached: existsSync(refFile(p.id)) },
   ...SELFIE_VARIANTS.slice(0, PERSONAS.selfiesPerPersona).map((_, i) => ({
     key: `${p.id}/selfie-${i + 1}`,
     group: "bad selfies",
     label: `${p.id} selfie ${i + 1}`,
-    costUsd: price,
+    costUsd: selfiePrice,
     cached: existsSync(selfieFile(p.id, i + 1)),
   })),
 ]);
 
 console.log(`Personas: ${personas.map((p) => `${p.id} (${p.gender}, ${p.ageGroup}, ${p.skinTone})`).join("; ")}`);
-console.log(`Model: ${PERSONAS.referenceEndpoint} + ${PERSONAS.selfieEndpoint} at ${PERSONAS.pricing.kind === "per_image" ? `$${PERSONAS.pricing.usd}` : ""} per image (${PERSONAS.source.url}, checked ${PERSONAS.source.checked})`);
+console.log(`Reference: ${PERSONAS.referenceEndpoint} ${PERSONAS.referenceSize.width}×${PERSONAS.referenceSize.height}, $${refPrice} each`);
+console.log(`Selfies:   ${PERSONAS.selfieEndpoint} ${PERSONAS.selfieSize.width}×${PERSONAS.selfieSize.height}, $${selfiePrice} each`);
+console.log(`Prices: ${PERSONAS.sources.map((s) => `${s.url} (${s.note}, checked ${s.checked})`).join("; ")}`);
 const runnable = printPlan("bench:personas", items, spend.snapshot());
 
 if (args.dryRun) {
@@ -58,6 +62,7 @@ if (!runnable.length) {
 if (!(await confirm(args))) process.exit(0);
 
 for (const p of personas) {
+  const personaIndex = PERSONA_SPECS.indexOf(p);
   mkdirSync(path.join(SUBJECTS_DIR, p.id, "selfies"), { recursive: true });
   upsertSubjectMeta({ id: p.id, type: "synth", gender: p.gender, ageGroup: p.ageGroup, skinTone: p.skinTone });
   const allowed = new Set(runnable.map((i) => i.key));
@@ -69,8 +74,14 @@ for (const p of personas) {
         key: `${p.id}/reference`,
         kind: "persona",
         endpoint: PERSONAS.referenceEndpoint,
-        input: { prompt: personaReferencePrompt(p), num_images: 1, aspect_ratio: "4:5", output_format: "jpeg" },
-        costUsd: price,
+        input: {
+          prompt: personaReferencePrompt(p),
+          image_size: PERSONAS.referenceSize,
+          num_images: 1,
+          seed: PERSONAS.baseSeed + personaIndex * 10,
+          output_format: "jpeg",
+        },
+        costUsd: refPrice,
         meta: { subject: p.id },
         save: async (d) => ({ url: d.images[0]?.url, ...(await downloadImage(d.images[0]!.url, refFile(p.id))), file: refFile(p.id) }),
       },
@@ -95,8 +106,15 @@ for (const p of personas) {
           key: `${p.id}/selfie-${n}`,
           kind: "persona",
           endpoint: PERSONAS.selfieEndpoint,
-          input: { prompt: selfiePrompt(variant), image_urls: [refUrl], num_images: 1, aspect_ratio: "3:4", output_format: "jpeg" },
-          costUsd: price,
+          input: {
+            prompt: selfiePrompt(variant),
+            image_urls: [refUrl],
+            image_size: PERSONAS.selfieSize,
+            num_images: 1,
+            seed: PERSONAS.baseSeed + personaIndex * 10 + n,
+            output_format: "jpeg",
+          },
+          costUsd: selfiePrice,
           meta: { subject: p.id, n },
           save: async (d) => ({ url: d.images[0]?.url, ...(await downloadImage(d.images[0]!.url, selfieFile(p.id, n))), file: selfieFile(p.id, n) }),
         },

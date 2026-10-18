@@ -51,6 +51,12 @@ export type Pricing =
   | { kind: "flux2"; firstOutputMpUsd: number; extraMpUsd: number }
   /** Price per megapixel of output, rounded up per image. */
   | { kind: "per_mp"; usd: number }
+  /**
+   * Gemini-style token billing (Nano Banana 2.1): a 1K output image is ~1,120
+   * image tokens, every input image ~1,120 input tokens; `overheadUsd` covers
+   * the prompt and default ("medium") thinking tokens with a margin.
+   */
+  | { kind: "tokens"; outputImageUsd: number; inputImageUsd: number; overheadUsd: number }
   /** Training: price for `baseSteps`, scales linearly with steps. */
   | { kind: "training"; usd: number; baseSteps: number };
 
@@ -58,7 +64,7 @@ export type Source = { url: string; checked: string; note?: string };
 
 // ─── Models under test ──────────────────────────────────────────────────────
 
-export type ModelKey = "nb2" | "nbpro" | "seedream" | "flux2" | "lora";
+export type ModelKey = "nb21" | "nbpro" | "seedream" | "flux3" | "lora";
 
 export type BenchModel = {
   key: ModelKey;
@@ -74,14 +80,21 @@ export type BenchModel = {
 };
 
 export const MODELS: Record<Exclude<ModelKey, "lora">, BenchModel> = {
-  nb2: {
-    key: "nb2",
-    label: "Nano Banana 2",
-    endpoint: "fal-ai/nano-banana-2/edit",
-    pricing: { kind: "per_image", usd: 0.08 }, // 1K; 2K ×1.5, 4K ×2
+  nb21: {
+    key: "nb21",
+    label: "Nano Banana 2.1",
+    endpoint: "google/nano-banana-2.1/edit",
+    // $35.294 per 1M image output tokens × ~1,120 tokens (1K) = $0.0395; inputs $1.764 per 1M × ~1,120 = ~$0.002 each;
+    // fal measured a 1K edit with default thinking at $0.0415 (2 inputs: $0.044). $0.01 overhead = prompt + thinking + margin.
+    pricing: { kind: "tokens", outputImageUsd: 0.0396, inputImageUsd: 0.002, overheadUsd: 0.01 },
     maxRefs: 14,
     seed: true,
-    source: { url: "https://fal.ai/models/fal-ai/nano-banana-2/edit", checked: PRICES_CHECKED, note: "$0.08 per image at 1K" },
+    source: {
+      url: "https://fal.ai/models/google/nano-banana-2.1/edit",
+      checked: PRICES_CHECKED,
+      note: "token billing: image tokens $1.764 in / $35.294 out per 1M; ~1,120 tokens per 1K image; fal test 2026-10-07: $0.0415 per 1K edit; up to 14 references. Overview: https://fal.ai/nano-banana-2.1",
+    },
+    note: "Replaces Nano Banana 2 (fal-ai/nano-banana-2/edit, $0.08 per 1K image). Billed by tokens, so the planned price is an estimate with a margin: compare it with the fal.ai usage page after the smoke test.",
   },
   nbpro: {
     key: "nbpro",
@@ -102,18 +115,19 @@ export const MODELS: Record<Exclude<ModelKey, "lora">, BenchModel> = {
     source: { url: "https://fal.ai/models/fal-ai/bytedance/seedream/v4.5/edit", checked: PRICES_CHECKED, note: "$0.04 per image" },
     note: "Minimum output is ~3.7 MP (custom sizes need ≥ 2560×1440 pixels in total), so Seedream runs at 1728×2160 — not 1K like the others. Seedream 5.0 Pro is listed on fal.ai as text-to-image only on the check date.",
   },
-  flux2: {
-    key: "flux2",
-    label: "FLUX.2 [pro]",
-    endpoint: "fal-ai/flux-2-pro/edit",
-    pricing: { kind: "flux2", firstOutputMpUsd: 0.03, extraMpUsd: 0.015 },
-    maxRefs: 4, // endpoint takes up to 9; 4 keeps the per-MP input cost inside the budget (see README)
-    seed: true,
+  flux3: {
+    key: "flux3",
+    label: "FLUX 3",
+    endpoint: "blackforestlabs/flux-3/edit-image",
+    pricing: { kind: "per_image", usd: 0.048 }, // 1k tier (1 MP); 2k / 4k cost more
+    maxRefs: 10,
+    seed: false, // the endpoint schema has no seed field
     source: {
-      url: "https://fal.ai/models/fal-ai/flux-2-pro/edit",
+      url: "https://fal.ai/models/blackforestlabs/flux-3/edit-image",
       checked: PRICES_CHECKED,
-      note: "$0.03 first MP of output + $0.015 per extra MP of input and output, rounded up; up to 9 references",
+      note: "\"A 1K (1 MP) image costs $0.048\" (raised from $0.024 on 2026-10-16); up to 10 references; also https://fal.ai/pricing (unit: megapixels)",
     },
+    note: "Replaces FLUX.2 [pro] (fal-ai/flux-2-pro/edit). Priced per output image by resolution tier; fal.ai does not say whether reference images are billed (BFL's own API prices FLUX 3 per image). Check the fal.ai usage page after the smoke test. No seed parameter, so FLUX 3 frames are not reproducible.",
   },
 };
 
@@ -133,13 +147,25 @@ export const LORA = {
   ] as Source[],
 };
 
-/** Synthetic personas (docs/07 §2 step A): a model that is NOT under test, to limit bias. */
+/**
+ * Synthetic personas (docs/07 §2 step A): Qwen models — a different family
+ * from every model under test, so none of them gets a head start on synthetic
+ * faces. Text-to-image for the reference, image edit for the 6 "bad selfies".
+ * Sizes are multiples of 16 and under 1,000,000 px, so each image is billed as 1 MP.
+ */
 export const PERSONAS = {
-  referenceEndpoint: "fal-ai/nano-banana",
-  selfieEndpoint: "fal-ai/nano-banana/edit",
-  pricing: { kind: "per_image", usd: 0.039 } as Pricing,
+  referenceEndpoint: "fal-ai/qwen-image",
+  referencePricing: { kind: "per_mp", usd: 0.02 } as Pricing,
+  referenceSize: { width: 864, height: 1088 },
+  selfieEndpoint: "fal-ai/qwen-image-edit-2511",
+  selfiePricing: { kind: "per_mp", usd: 0.03 } as Pricing,
+  selfieSize: { width: 864, height: 1152 },
   selfiesPerPersona: 6,
-  source: { url: "https://fal.ai/models/fal-ai/nano-banana/edit", checked: PRICES_CHECKED, note: "$0.039 per image (original Nano Banana)" } as Source,
+  baseSeed: 4242,
+  sources: [
+    { url: "https://fal.ai/models/fal-ai/qwen-image", checked: PRICES_CHECKED, note: "$0.02 per megapixel" },
+    { url: "https://fal.ai/models/fal-ai/qwen-image-edit-2511", checked: PRICES_CHECKED, note: "$0.03 per megapixel; image_urls, image_size, seed" },
+  ] as Source[],
 };
 
 /** Upscale mini-test (docs/07 §3): 3 best frames → 4K. */
@@ -155,8 +181,8 @@ export const UPSCALE = {
 
 /**
  * Demo set (docs/07 §8): candidates per style (`--candidates=N`); the best by
- * auto-likeness is exported. 1 by default: after personas + run + upscale
- * (~$15.1) about $1.9 is left under the ceiling.
+ * auto-likeness is exported. 1 by default (`--candidates=2` fits the budget
+ * for the cheaper winners — the plan shows it).
  */
 export const DEMO = {
   candidatesPerStyle: 1,

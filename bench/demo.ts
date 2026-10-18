@@ -4,8 +4,8 @@
  * pairs for the Studio tools (Background ×2, Outfit, Retouch, Relight) made with
  * the edits model. Every candidate goes through the same auto-likeness filter.
  *
- *   npm run bench:demo -- --model=nb2 --dry-run
- *   npm run bench:demo -- --model=nb2 [--edit-model=seedream --persona=synth-03 --candidates=2 --yes]
+ *   npm run bench:demo -- --model=nb21 --dry-run
+ *   npm run bench:demo -- --model=nb21 [--edit-model=seedream --persona=synth-03 --candidates=2 --yes]
  *
  * Output: public/demo/headshot/<styleId>.webp, public/demo/headshot/selfie.webp,
  * public/demo/edits/<tool>-<option>.webp (1080×1350) + a manifest snippet in
@@ -32,7 +32,7 @@ import type { ScoresFile } from "./lib/types";
 import { DEMO_EDITS, generationPrompt } from "./prompts";
 
 const args = parseCommonArgs();
-if (!args.model) fail("Pass the winning model: npm run bench:demo -- --model=<nb2|nbpro|seedream|flux2>");
+if (!args.model) fail("Pass the winning model: npm run bench:demo -- --model=<nb21|nbpro|seedream|flux3>");
 const model = getModel(args.model);
 const editModel = getModel(args.editModel ?? args.model);
 const spend = new Spend();

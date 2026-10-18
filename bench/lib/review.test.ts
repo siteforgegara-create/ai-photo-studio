@@ -5,7 +5,7 @@ import { allStats, joinRows, rankForShoot, recommendThreshold, thresholdTable } 
 import { buildReviewHtml, frameId, prepareReview, shuffle, type FrameRef } from "./review-html";
 import type { FrameScore } from "./types";
 
-const models = ["nb2", "nbpro", "seedream", "flux2", "lora"];
+const models = ["nb21", "nbpro", "seedream", "flux3", "lora"];
 const frames: FrameRef[] = ["real-01", "synth-01"].flatMap((subject) =>
   models.flatMap((model) =>
     ["corporate-gray", "modern-office"].flatMap((style) => [1, 2].map((n) => ({ file: `${subject}/${model}/${style}-${n}.jpg`, subject, model, style, n }))),
@@ -36,8 +36,8 @@ describe("review.html (blind)", () => {
   });
 
   it("the key maps ids back to model and file", () => {
-    const id = frameId("2026-10-20", "real-01/nb2/corporate-gray-1.jpg");
-    expect(key[id]).toEqual({ file: "real-01/nb2/corporate-gray-1.jpg", subject: "real-01", model: "nb2", style: "corporate-gray", n: 1 });
+    const id = frameId("2026-10-20", "real-01/nb21/corporate-gray-1.jpg");
+    expect(key[id]).toEqual({ file: "real-01/nb21/corporate-gray-1.jpg", subject: "real-01", model: "nb21", style: "corporate-gray", n: 1 });
   });
 
   it("shuffles deterministically, and models are mixed", () => {
@@ -57,8 +57,8 @@ describe("review.html (blind)", () => {
 
 describe("report maths", () => {
   const scores: FrameScore[] = [
-    { file: "a", subject: "real-01", subjectType: "real", model: "nb2", style: "s", n: 1, faces: 1, defect: null, similarity: 0.8, usd: 0.08, ms: 5000 },
-    { file: "b", subject: "real-01", subjectType: "real", model: "nb2", style: "s", n: 2, faces: 1, defect: null, similarity: 0.75, usd: 0.08, ms: 7000 },
+    { file: "a", subject: "real-01", subjectType: "real", model: "nb21", style: "s", n: 1, faces: 1, defect: null, similarity: 0.8, usd: 0.08, ms: 5000 },
+    { file: "b", subject: "real-01", subjectType: "real", model: "nb21", style: "s", n: 2, faces: 1, defect: null, similarity: 0.75, usd: 0.08, ms: 7000 },
     { file: "c", subject: "real-01", subjectType: "real", model: "seedream", style: "s", n: 1, faces: 1, defect: null, similarity: 0.4, usd: 0.04 },
     { file: "d", subject: "real-01", subjectType: "real", model: "seedream", style: "s", n: 2, faces: 0, defect: "no-face", similarity: null, usd: 0.04 },
   ];
@@ -67,10 +67,10 @@ describe("report maths", () => {
   const rows = joinRows(scores, ratings, key, new Map());
 
   it("per-model stats and cost per sellable frame", () => {
-    const [nb2, seedream] = allStats(rows);
-    expect(nb2).toMatchObject({ model: "nb2", frames: 2, rated: 2, sellableShare: 0.5, costPerFrame: 0.08, costPerSellable: 0.16, avgSeconds: 6 });
+    const [nb21, seedream] = allStats(rows);
+    expect(nb21).toMatchObject({ model: "nb21", frames: 2, rated: 2, sellableShare: 0.5, costPerFrame: 0.08, costPerSellable: 0.16, avgSeconds: 6 });
     expect(seedream).toMatchObject({ model: "seedream", defectRate: 0.5, sellableShare: 0, costPerSellable: null });
-    expect(rankForShoot([seedream!, nb2!])[0]!.model).toBe("nb2");
+    expect(rankForShoot([seedream!, nb21!])[0]!.model).toBe("nb21");
   });
 
   it("threshold removes frames humans rated ≤ 2", () => {

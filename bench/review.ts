@@ -5,13 +5,15 @@
  *
  * Output in bench/runs/<run>/:
  *   review.html      open in a browser, rate, press "Сохранить оценки"
- *   review-img/      frames copied under opaque ids (file names would reveal the model)
+ *   review-img/      frames under opaque ids (file names would reveal the model),
+ *                    all normalised to 880×1100 JPEG q90 (resolution/sharpness would too)
  *   review-key.json  id → model (read by bench:report; don't open before rating)
  */
-import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fail, parseCommonArgs } from "./lib/cli";
 import { buildReviewHtml, prepareReview, REVIEW_IMG_DIR, type FrameRef } from "./lib/review-html";
+import { normalizeFrame, REVIEW_SIZE } from "./lib/images";
 import { listImages, rel, resolveRunId, runDir } from "./lib/paths";
 import { loadSubjects } from "./lib/subjects";
 
@@ -19,7 +21,7 @@ const args = parseCommonArgs();
 const runId = resolveRunId(args.run);
 const RUN = runDir(runId);
 if (args.dryRun) {
-  console.log(`bench:review — local, no fal.ai calls, cost $0.00.\nWould write bench/runs/${runId}/review.html, review-img/ and review-key.json.`);
+  console.log(`bench:review — local, no fal.ai calls, cost $0.00.\nWould write bench/runs/${runId}/review.html, review-img/ (frames normalised to 880×1100 JPEG q90) and review-key.json.`);
   process.exit(0);
 }
 if (!existsSync(RUN)) fail(`No run folder bench/runs/${runId}.`);
@@ -47,10 +49,10 @@ const { data, key } = prepareReview(
 const imgDir = path.join(RUN, REVIEW_IMG_DIR);
 rmSync(imgDir, { recursive: true, force: true });
 mkdirSync(imgDir, { recursive: true });
-for (const [id, k] of Object.entries(key)) copyFileSync(path.join(RUN, k.file), path.join(imgDir, `${id}.jpg`));
+for (const [id, k] of Object.entries(key)) writeFileSync(path.join(imgDir, `${id}.jpg`), await normalizeFrame(path.join(RUN, k.file)));
 
 writeFileSync(path.join(RUN, "review.html"), buildReviewHtml(data));
 writeFileSync(path.join(RUN, "review-key.json"), JSON.stringify(key, null, 2));
-console.log(`review.html: ${frames.length} frames from ${data.subjects.length} subjects.`);
+console.log(`review.html: ${frames.length} frames from ${data.subjects.length} subjects, all at ${REVIEW_SIZE.width}×${REVIEW_SIZE.height} JPEG.`);
 console.log(`Open bench/runs/${runId}/review.html in a browser, rate every frame, press "Сохранить оценки" and put ratings.json into bench/runs/${runId}/.`);
 console.log(`Then: npm run bench:report`);

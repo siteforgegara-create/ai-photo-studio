@@ -8,11 +8,15 @@
  * (synthetic) or frame ↔ mean of the selfies (real). It also measures the
  * "same person" vs "different person" distributions on the selfies, so the
  * numbers can be read against a baseline.
+ *
+ * Frames are scored after the same 880×1100 JPEG q90 normalisation as the
+ * blind review (normalizeFrame), so both metrics see identical pixels.
  */
 import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fail, parseCommonArgs } from "./lib/cli";
 import { analyzeFace, cosine, defectOf, largestFace, meanEmbedding } from "./lib/face";
+import { normalizeFrame } from "./lib/images";
 import { readLog } from "./lib/log";
 import { listImages, rel, resolveRunId, runDir } from "./lib/paths";
 import { loadSubjects, type Subject } from "./lib/subjects";
@@ -82,7 +86,7 @@ for (const s of subjects) {
       const m = path.basename(file).match(/^(.+)-(\d+)\.jpg$/);
       if (!m) continue;
       const [, style, n] = m;
-      const r = await analyzeFace(file);
+      const r = await analyzeFace(await normalizeFrame(file));
       const defect = defectOf(r);
       const face = largestFace(r);
       const ref = refs.get(s.id);
@@ -107,7 +111,7 @@ for (const s of subjects) {
 const out: ScoresFile = {
   run: runId,
   scoredAt: new Date().toISOString(),
-  method: "@vladmandic/human (WASM): BlazeFace detector + FaceRes embedding (1024-d), cosine similarity",
+  method: "@vladmandic/human (WASM): BlazeFace detector + FaceRes embedding (1024-d), cosine similarity; frames normalised to 880×1100 JPEG q90 first",
   baseline: { genuine, impostor },
   subjects: subjectInfo,
   frames,

@@ -40,13 +40,14 @@ export function seedFor(styleIndex: number, n: number): number {
 export function buildFrameInput(model: BenchModel, prompt: string, refUrls: string[], seed: number): Record<string, unknown> {
   const refs = refUrls.slice(0, refsFor(model, refUrls.length));
   switch (model.key as Exclude<ModelKey, "lora">) {
-    case "nb2":
+    case "nb21":
     case "nbpro":
       return { prompt, image_urls: refs, num_images: 1, seed, aspect_ratio: "4:5", resolution: "1K", output_format: "jpeg" };
     case "seedream":
       return { prompt, image_urls: refs, image_size: SEEDREAM_SIZE, num_images: 1, max_images: 1, seed };
-    case "flux2":
-      return { prompt, image_urls: refs, image_size: OUTPUT, seed, output_format: "jpeg" };
+    case "flux3":
+      // No seed field in the FLUX 3 schema; 1k tier, 4:5.
+      return { prompt, image_urls: refs, aspect_ratio: "4:5", resolution: "1k", output_format: "jpeg" };
   }
 }
 

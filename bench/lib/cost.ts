@@ -42,6 +42,10 @@ export function callCost(
       const perImage = pricing.firstOutputMpUsd + pricing.extraMpUsd * (outMp - 1 + inMp);
       return round(perImage * images);
     }
+    case "tokens": {
+      const inputs = opts.inputs?.length ?? 0;
+      return round((pricing.outputImageUsd + pricing.overheadUsd + pricing.inputImageUsd * inputs) * images);
+    }
     case "training": {
       const steps = opts.steps ?? pricing.baseSteps;
       return round((pricing.usd * steps) / pricing.baseSteps);

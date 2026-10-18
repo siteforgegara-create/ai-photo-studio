@@ -75,7 +75,7 @@ export async function loadFaceModel(): Promise<HumanLike> {
   return h;
 }
 
-export async function analyzeFace(file: string): Promise<FaceResult> {
+export async function analyzeFace(file: string | Buffer): Promise<FaceResult> {
   const h = await loadFaceModel();
   const { data, info } = await sharp(file).rotate().removeAlpha().raw().toBuffer({ resolveWithObject: true });
   const tensor = h.tf.tensor3d(new Uint8Array(data), [info.height, info.width, 3], "int32");

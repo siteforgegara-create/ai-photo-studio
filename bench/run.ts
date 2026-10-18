@@ -3,7 +3,7 @@
  * plus the LoRA control for one real participant.
  *
  *   npm run bench:run -- --dry-run
- *   npm run bench:run [-- --only=nb2,seedream --subjects=real-01 --run=2026-10-20 --no-lora --lora-subject=real-02 --yes]
+ *   npm run bench:run [-- --only=nb21,seedream --subjects=real-01 --run=2026-10-20 --no-lora --lora-subject=real-02 --yes]
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -113,7 +113,8 @@ if (loraSubject) {
 console.log(`Run: bench/runs/${runId}   Subjects: ${subjects.map((s) => s.id).join(", ")}${subjects.some((s) => s.planned) ? "  (PLANNED — no photos yet)" : ""}`);
 console.log(`Models: ${models.map((m) => `${m.key} → ${m.endpoint} (${m.source.note})`).join("\n        ")}`);
 if (loraSubject) console.log(`        lora → ${LORA.trainEndpoint} + ${LORA.generateEndpoint} on ${loraSubject.id}`);
-console.log(`Output: ${OUTPUT.width}×${OUTPUT.height} (Seedream 1728×2160 — its minimum). Prices checked ${MODELS.nb2.source.checked}.`);
+console.log(`Output: ${OUTPUT.width}×${OUTPUT.height} (Seedream 1728×2160 — its minimum). Prices checked ${MODELS.nb21.source.checked}.`);
+for (const m of Object.values(MODELS)) if (m.note) console.log(`  · ${m.label}: ${m.note}`);
 const planItems: PlanItem[] = [...(loraTrain ? [loraTrain] : []), ...frames];
 const runnable = new Set(printPlan("bench:run", planItems, spend.snapshot()).map((i) => i.key));
 

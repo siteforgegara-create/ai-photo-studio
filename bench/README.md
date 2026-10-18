@@ -38,20 +38,22 @@ bench/subjects/
 
 | # | Команда | Что делает | ≈ Стоимость |
 |---|---|---|---|
-| 1 | `npm run bench:personas -- --dry-run`, затем `npm run bench:personas` | 5 синтетических персонажей: эталон + 6 «плохих» селфи. Модель Nano Banana (v1) не участвует в тесте | **$1.36** |
+| 1 | `npm run bench:personas -- --dry-run`, затем `npm run bench:personas` | 5 синтетических персонажей: эталон (Qwen Image) + 6 «плохих» селфи (Qwen Image Edit 2511). Qwen — семейство вне теста | **$1.00** |
 | 2 | *(посмотрите `bench/subjects/synth-*`)* | | — |
-| 3 | `npm run bench:run -- --dry-run`, затем `npm run bench:run` | 8 участников × 4 модели × 4 кадра + LoRA-контроль на `real-01` | **$13.66** |
-| 4 | `npm run bench:score` | автосходство, брак, время, цена (локально) | $0 |
-| 5 | `npm run bench:review` | собирает `bench/runs/<дата>/review.html` | $0 |
+| 2а | `npm run bench:run -- --only=nb21,flux3 --subjects=synth-01 --no-lora` | **смоук-тест**: связь с fal.ai + проверка цен двух моделей, у которых цена — оценка. После него сравните расход на странице Usage в fal.ai с планом ($0.44) | **$0.44** |
+| 3 | `npm run bench:run -- --dry-run`, затем `npm run bench:run` | 8 участников × 4 модели × 4 кадра + LoRA-контроль на `real-01` (смоук-кадры уже в кэше) | **$11.73** |
+| 4 | `npm run bench:score` | автосходство, брак, время, цена (локально, по тем же кадрам 880×1100) | $0 |
+| 5 | `npm run bench:review` | собирает `bench/runs/<дата>/review.html`; все кадры приводятся к 880×1100 JPEG q90 | $0 |
 | 6 | *Откройте `review.html`, оцените все кадры и нажмите «Сохранить оценки»* | `ratings.json` положите в ту же папку прогона | $0 |
 | 7 | `npm run bench:report` | `bench/runs/<дата>/report.md` — таблицы, пороги, рекомендация | $0 |
 | 8 | `npm run bench:upscale -- --dry-run`, затем без `--dry-run` | 3 лучших кадра → 4K (SeedVR2) | **$0.06** |
-| 9 | `npm run bench:demo -- --model=<победитель> --dry-run`, затем без `--dry-run` | демо-набор: 12 стилей + 5 правок Studio → `public/demo/` | **≈ $1.36** (nb2) |
+| 9 | `npm run bench:demo -- --model=<победитель> --dry-run`, затем без `--dry-run` | демо-набор: 12 стилей + 5 правок Studio → `public/demo/` | **$1.00** (nb21) … **$2.55** (nbpro) |
 
-Итого по плану: $1.36 + $13.66 + $0.06 + $1.36 = **$16.44 из $17**.
+Итого по плану: $1.00 + $11.73 + $0.06 + демо $1.00–2.55 = **$13.79–15.34 из $17**.
 
-- **Победитель — Nano Banana Pro.** Демо стоит $2.55, а с `--edit-model=seedream` — $2.00. После шагов 1–8 остаётся ≈ $1.92, поэтому потолок отрежет 1–2 последние правки; план покажет, какие именно. Если Pro заранее выглядит фаворитом, запускайте `bench:run` с `--no-lora`: это экономит $2.14, и тогда демо помещается целиком.
-- **Шаги 1 и 3 можно запускать порциями.** Например, `npm run bench:run -- --only=seedream,nb2 --subjects=real-01`. Готовые кадры не перегенерируются: кэш по участнику, модели, стилю и номеру.
+- **Запас $1.7–3.2** хватает на 1–2 дополнительных реальных участников ($1.20 каждый: 4 модели × 4 кадра). Положите `real-04` / `real-05` — план сам покажет, влезает ли.
+- **Цены Nano Banana 2.1 и FLUX 3 — оценки.** NB 2.1 оплачивается токенами (в плане заложено $0.0616 на кадр с 6 референсами, с запасом), а у FLUX 3 fal.ai не пишет, оплачиваются ли референсы (в плане $0.048 за кадр). Потолок считает по плану, поэтому сверка после смоук-теста (шаг 2а) обязательна: если реальный расход заметно выше — остановитесь и напишите мне, я подниму цены в `config.ts`.
+- **Шаги 1 и 3 можно запускать порциями.** Например, `npm run bench:run -- --only=seedream,nb21 --subjects=real-01`. Готовые кадры не перегенерируются: кэш по участнику, модели, стилю и номеру.
 - **Повторный запуск.** `bench:run` продолжает последний прогон. Новый прогон: `--run=2026-10-25`.
 
 ## Флаги
@@ -60,7 +62,7 @@ bench/subjects/
 |---|---|---|
 | `--dry-run` | все | только план и цены, без вызовов и без ключа |
 | `--yes` | платные | без вопроса y/N |
-| `--only=nb2,nbpro,seedream,flux2,lora` | run | какие модели |
+| `--only=nb21,nbpro,seedream,flux3,lora` | run | какие модели |
 | `--subjects=real-01,synth-02` | personas, run, score, review | какие участники |
 | `--no-lora`, `--lora-subject=real-02` | run | LoRA-контроль: выключить или выбрать человека |
 | `--run=YYYY-MM-DD` | все | папка прогона (по умолчанию — последняя) |
@@ -70,17 +72,18 @@ bench/subjects/
 
 | Ключ | Эндпоинт | Цена | Источник |
 |---|---|---|---|
-| `nb2` | `fal-ai/nano-banana-2/edit` | $0.08 / кадр (1K), до 14 референсов | [fal.ai](https://fal.ai/models/fal-ai/nano-banana-2/edit) |
+| `nb21` | `google/nano-banana-2.1/edit` | токены: изображения $1.764 вход / $35.294 выход за 1M; ~1 120 токенов на картинку 1K → в плане $0.0616 / кадр с 6 референсами (замер fal: $0.0415 за 1K-правку); до 14 референсов | [fal.ai](https://fal.ai/models/google/nano-banana-2.1/edit), [обзор](https://fal.ai/nano-banana-2.1) |
 | `nbpro` | `fal-ai/nano-banana-pro/edit` | $0.15 / кадр, до 14 референсов | [fal.ai](https://fal.ai/models/fal-ai/nano-banana-pro/edit) |
 | `seedream` | `fal-ai/bytedance/seedream/v4.5/edit` | $0.04 / кадр, до 10 референсов; минимум ~3.7 МП → 1728×2160 | [fal.ai](https://fal.ai/models/fal-ai/bytedance/seedream/v4.5/edit) |
-| `flux2` | `fal-ai/flux-2-pro/edit` | $0.03 за 1-й МП выхода + $0.015 за каждый доп. МП входа и выхода; берём 4 референса → $0.09 / кадр | [fal.ai](https://fal.ai/models/fal-ai/flux-2-pro/edit) |
+| `flux3` | `blackforestlabs/flux-3/edit-image` | $0.048 за кадр 1K (1 МП; с 16.10.2026, до этого $0.024); до 10 референсов; seed нет | [fal.ai](https://fal.ai/models/blackforestlabs/flux-3/edit-image), [pricing](https://fal.ai/pricing) |
 | `lora` | `fal-ai/flux-lora-fast-training` + `fal-ai/flux-lora` | $2 за обучение (1000 шагов) + $0.035 / МП | [обучение](https://fal.ai/models/fal-ai/flux-lora-fast-training), [генерация](https://fal.ai/models/fal-ai/flux-lora) |
-| персонажи | `fal-ai/nano-banana` (+ `/edit`) | $0.039 / кадр | [fal.ai](https://fal.ai/models/fal-ai/nano-banana/edit) |
+| персонажи: эталон | `fal-ai/qwen-image` | $0.02 / МП → 864×1088 = $0.02 | [fal.ai](https://fal.ai/models/fal-ai/qwen-image) |
+| персонажи: селфи | `fal-ai/qwen-image-edit-2511` | $0.03 / МП → 864×1152 = $0.03 | [fal.ai](https://fal.ai/models/fal-ai/qwen-image-edit-2511) |
 | апскейл | `fal-ai/seedvr/upscale/image` | $0.001 / МП | [fal.ai](https://fal.ai/models/fal-ai/seedvr/upscale/image/llms.txt) |
 
 Цены и id — в `bench/config.ts`, это единственный источник. Перед большим прогоном проверьте их на fal.ai: цены могут меняться.
 
-На дату проверки в каталоге fal.ai появились и более новые модели (Nano Banana 2.1, Seedream 5.0 Pro, FLUX 3). Кроме Seedream 5.0, у которого в каталоге только text-to-image, их можно добавить в `MODELS`, проверив схему edit-эндпоинта.
+Nano Banana 2.1 и FLUX 3 заменили Nano Banana 2 и FLUX.2 [pro] (у обеих есть edit по референсам). Seedream 5.0 Pro в каталоге fal.ai только text-to-image, поэтому Seedream остаётся 4.5.
 
 ## Сбои
 

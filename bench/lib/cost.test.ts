@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { LORA, MODELS, OUTPUT, PERSONAS, SPEND_CEILING_USD, UPSCALE } from "../config";
+import type { Pricing } from "../config";
 import { billedMp, callCost, MP_FLUX, canSpend, emptyLedger, fitUnderCeiling, record, summarize, type PlanItem } from "./cost";
 import { frameCost, loraFrameCost, loraTrainCost, PLANNED_SELFIE_SIZE } from "./models";
 
@@ -12,8 +13,8 @@ describe("callCost", () => {
     expect(billedMp({ width: 512, height: 512 })).toBe(1);
   });
 
-  it("FLUX.2 [pro] matches the examples on fal.ai", () => {
-    const p = MODELS.flux2.pricing;
+  it("FLUX.2-style pricing matches the examples on fal.ai (kept for re-adding FLUX.2)", () => {
+    const p: Pricing = { kind: "flux2", firstOutputMpUsd: 0.03, extraMpUsd: 0.015 };
     // fal.ai examples: 1024×1024 → $0.03, 1920×1080 → $0.045, 512×512 → $0.03
     expect(callCost(p, { output: { width: 1024, height: 1024 } })).toBe(0.03);
     expect(callCost(p, { output: { width: 512, height: 512 } })).toBe(0.03);
@@ -24,10 +25,11 @@ describe("callCost", () => {
 
   it("per-image models and refs limit", () => {
     const refs = Array.from({ length: 6 }, () => PLANNED_SELFIE_SIZE);
-    expect(frameCost(MODELS.nb2, refs)).toBe(0.08);
+    expect(frameCost(MODELS.nb21, refs)).toBe(0.0616); // tokens: 0.0396 out + 6 × 0.002 in + 0.01 overhead
+    expect(frameCost(MODELS.nb21, refs.slice(0, 2))).toBeGreaterThanOrEqual(0.044); // ≥ fal's measured 2-input 1K edit
     expect(frameCost(MODELS.nbpro, refs)).toBe(0.15);
     expect(frameCost(MODELS.seedream, refs)).toBe(0.04);
-    expect(frameCost(MODELS.flux2, refs)).toBe(0.09); // 1 MP out + 4 refs × 1 MP
+    expect(frameCost(MODELS.flux3, refs)).toBe(0.048); // flat 1k tier
   });
 
   it("LoRA training scales with steps; generation per MP", () => {
@@ -36,8 +38,9 @@ describe("callCost", () => {
     expect(loraFrameCost()).toBe(0.035);
   });
 
-  it("personas and upscale", () => {
-    expect(callCost(PERSONAS.pricing)).toBe(0.039);
+  it("personas (Qwen) and upscale", () => {
+    expect(callCost(PERSONAS.referencePricing, { output: PERSONAS.referenceSize })).toBe(0.02); // 864×1088 < 1 MP
+    expect(callCost(PERSONAS.selfiePricing, { output: PERSONAS.selfieSize })).toBe(0.03); // 864×1152 < 1 MP
     expect(callCost(UPSCALE.pricing, { output: UPSCALE.plannedOutput })).toBe(0.019);
   });
 });
@@ -87,12 +90,12 @@ describe("plan and ceiling", () => {
 
   it("the default plan (3 real + 5 synthetic) leaves room for the demo under $17", () => {
     const refs = Array.from({ length: 6 }, () => PLANNED_SELFIE_SIZE);
-    const perSubject = (["nb2", "nbpro", "seedream", "flux2"] as const).reduce((s, k) => s + frameCost(MODELS[k], refs) * 4, 0);
+    const perSubject = (["nb21", "nbpro", "seedream", "flux3"] as const).reduce((s, k) => s + frameCost(MODELS[k], refs) * 4, 0);
     const run = 8 * perSubject + loraTrainCost() + 4 * loraFrameCost();
-    const personas = 5 * 7 * callCost(PERSONAS.pricing);
+    const personas = 5 * (0.02 + 6 * 0.03);
     const upscale = 3 * callCost(UPSCALE.pricing, { output: UPSCALE.plannedOutput });
-    const demoNb2 = 12 * 0.08 + 5 * 0.08;
-    expect(Math.round(run * 100) / 100).toBe(13.66);
-    expect(run + personas + upscale + demoNb2).toBeLessThanOrEqual(SPEND_CEILING_USD);
+    const demoNbPro = 17 * 0.15; // most expensive winner
+    expect(Math.round(run * 100) / 100).toBe(11.73);
+    expect(run + personas + upscale + demoNbPro).toBeLessThanOrEqual(SPEND_CEILING_USD);
   });
 });

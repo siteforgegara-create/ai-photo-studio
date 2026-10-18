@@ -49,7 +49,7 @@ export function prepareReview(
         own.map((f) => {
           const id = frameId(run, f.file);
           key[id] = { file: f.file, subject: f.subject, model: f.model, style: f.style, n: f.n };
-          // Copied to review-img/<id>.jpg by bench:review: the original path (…/nb2/…) would reveal the model.
+          // Copied to review-img/<id>.jpg by bench:review: the original path (…/nb21/…) would reveal the model.
           return { id, src: `${REVIEW_IMG_DIR}/${id}.jpg` };
         }),
         `${run}:${s.id}`,

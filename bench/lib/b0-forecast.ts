@@ -1,15 +1,16 @@
 /**
  * Full B0 forecast: already spent + persona redo + analysis + run (with the
- * ablation) + upscale + demo, all with the safety margin, and the cuts needed
- * to stay under the ceiling. Used by bench:forecast and by bench:run (to size
- * the ablation group).
+ * ablation) + upscale, all with the safety margin, and the cut needed to stay
+ * under the $17 ceiling (ablation 4 → 2 subjects). The demo is NOT part of B0:
+ * it is shown on a separate line "after B0, outside the ceiling". Used by
+ * bench:forecast and by bench:run (to size the ablation group).
  */
 import path from "node:path";
 import { ABLATION, DEMO, FORECAST, LORA, MODELS, PERSONAS, PLANNED_REAL_SUBJECTS, SPEND_CEILING_USD } from "../config";
 import { PERSONA_SPECS } from "../prompts";
 import type { SubjectAttributes } from "./attributes";
-import type { Size } from "./cost";
-import { chooseCuts, cutOptions, forecast, type CutOption, type Forecast, type ForecastStep } from "./forecast";
+import { effectiveSpent, round, summarize, type Size } from "./cost";
+import { chooseCuts, cutOptions, type CutOption, type Forecast, type ForecastStep } from "./forecast";
 import { normalizeSelfie } from "./images";
 import { loadLedger } from "./ledger";
 import { readLog } from "./log";
@@ -40,8 +41,9 @@ export type B0Forecast = {
   option: CutOption;
   applied: string[];
   forecast: Forecast;
-  /** Same plan with the more expensive demo model (in case it wins). */
-  altDemo: { model: string; forecast: Forecast };
+  /** After B0, outside the $17 ceiling: the demo with the default and the more expensive model, and the total vs the demo guard. */
+  demo: { model: string; calls: number; listUsd: number; marginUsd: number; totalMarginUsd: number }[];
+  demoCeilingUsd: number;
   ablationIds: string[];
 };
 
@@ -73,7 +75,7 @@ export async function buildB0Forecast(runId: string, opts: { redo?: string[]; ab
   const models = Object.values(MODELS);
   const demoSizes = Array.from({ length: PERSONAS.selfiesPerPersona }, () => PERSONAS.selfieSize);
 
-  const steps = (o: CutOption, demoModel: keyof typeof MODELS): ForecastStep[] => {
+  const steps = (o: CutOption): ForecastStep[] => {
     const ablationIds = ablationSubjectIds(available, o.ablationSubjects);
     const plan = buildRunPlan({
       runId,
@@ -86,21 +88,28 @@ export async function buildB0Forecast(runId: string, opts: { redo?: string[]; ab
       ablationSubjects: subjects.filter((s) => ablationIds.includes(s.id)),
       log,
     });
-    const demo = demoItems(runId, MODELS[demoModel], MODELS[demoModel], demoSizes, o.demoCandidates);
     return [
       { name: `personas --redo (${redo.join(", ") || "none"})`, items: personaItems(PERSONA_SPECS.filter((p) => redoSet.has(p.id)), redoSet) },
       { name: "analyze (vision, per selfie)", items: analyzeItems(subjects, runId, redoSet) },
       { name: `run: 4 models + LoRA (${LORA.steps} steps)`, items: [...(plan.loraTrain ? [plan.loraTrain] : []), ...plan.frames] },
       { name: `run: ablation ${ABLATION.key} (${ablationIds.join(", ")})`, items: plan.ablation },
       { name: "upscale", items: upscaleItems(runId) },
-      { name: `demo (${MODELS[demoModel].label}, ${o.demoCandidates}/style)`, items: [...demo.styles, ...demo.edits] },
     ];
   };
 
-  const full: CutOption = { ablationSubjects: opts.ablationSubjects ?? ABLATION.subjects.length, demoCandidates: opts.demoCandidates ?? DEMO.candidatesPerStyle };
+  // Only cut: the ablation 4 → 2 subjects (docs/07 §11). The main run is never cut.
+  const full: CutOption = { ablationSubjects: opts.ablationSubjects ?? ABLATION.subjects.length, demoCandidates: 1 };
   const options = opts.ablationSubjects !== undefined ? [full] : cutOptions(full, ABLATION.reducedSubjects);
-  const chosen = chooseCuts(options, (o) => steps(o, FORECAST.demoModel), ledger, SPEND_CEILING_USD);
-  const alt = forecast(ledger, steps(chosen.option, FORECAST.demoAltModel), SPEND_CEILING_USD);
+  const chosen = chooseCuts(options, steps, ledger, SPEND_CEILING_USD);
+
+  // Demo: after B0, outside the ceiling — total with margin vs DEMO.ceilingUsd.
+  const candidates = opts.demoCandidates ?? DEMO.candidatesPerStyle;
+  const demo = [FORECAST.demoModel, FORECAST.demoAltModel].map((k) => {
+    const d = demoItems(runId, MODELS[k], MODELS[k], demoSizes, candidates);
+    const sum = summarize([...d.styles, ...d.edits]);
+    // Total for the demo guard: everything (B0 + demo spent so far) + this demo, all with margins.
+    return { model: `${MODELS[k].label}, ${candidates}/style`, calls: sum.toRun, listUsd: sum.costUsd, marginUsd: sum.marginUsd, totalMarginUsd: round(effectiveSpent(ledger, "all") + chosen.forecast.toRunMarginUsd + sum.marginUsd) };
+  });
   return {
     runId,
     redo,
@@ -108,7 +117,8 @@ export async function buildB0Forecast(runId: string, opts: { redo?: string[]; ab
     option: chosen.option,
     applied: chosen.applied,
     forecast: chosen.forecast,
-    altDemo: { model: MODELS[FORECAST.demoAltModel].label, forecast: alt },
+    demo,
+    demoCeilingUsd: DEMO.ceilingUsd,
     ablationIds: ablationSubjectIds(available, chosen.option.ablationSubjects),
   };
 }
@@ -133,9 +143,9 @@ export function printB0Forecast(b: B0Forecast, fmt: (usd: number) => string) {
       const g = byGroup.get(i.group) ?? { n: 0, usd: 0 };
       byGroup.set(i.group, { n: g.n + 1, usd: g.usd + i.costUsd });
     }
-    console.log(`  ⚠ Over the ceiling even after the cuts. The ceiling will refuse the LAST calls (main run is never cut by the plan):`);
+    console.log(`  ⚠ Over the ceiling even after the cut. The ceiling will refuse the LAST calls (the main run is never cut by the plan):`);
     for (const [g, v] of byGroup) console.log(`     - ${g}: ${v.n} calls (list ${fmt(v.usd)})`);
   }
-  const a = b.altDemo.forecast;
-  console.log(`  If ${b.altDemo.model} wins (demo with it): total with margin ${fmt(a.totalMarginUsd)}${a.fits ? " — fits" : ` — ${a.cut.length} calls over the ceiling`}.`);
+  console.log(`\n  After B0, outside the ${fmt(f.ceilingUsd)} ceiling (bench:demo, runs only on your decision; guard: total ≤ ${fmt(b.demoCeilingUsd)}):`);
+  for (const d of b.demo) console.log(`  ${`demo (${d.model})`.padEnd(w)}  ${String(d.calls).padStart(5)}  ${fmt(d.listUsd).padStart(11)}  ${fmt(d.marginUsd).padStart(11)}   → B0 + demo ${fmt(d.totalMarginUsd)} of ${fmt(b.demoCeilingUsd)}${d.totalMarginUsd <= b.demoCeilingUsd + 1e-9 ? "" : " ⚠ over"}`);
 }

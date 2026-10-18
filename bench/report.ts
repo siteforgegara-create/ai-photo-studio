@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { ABLATION, ANALYZE, COST_SAFETY_FACTOR, FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
+import { ABLATION, ANALYZE, FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
 import { accuracyTable, attributesLine, type AccuracyRow, type AttributeTruth } from "./lib/attributes";
 import { readAttributes } from "./lib/plans";
 import { effectiveSpent, formatUsd } from "./lib/cost";
@@ -148,7 +148,7 @@ const md = `# B0 — отчёт бенчмарка (${runId})
 
 - Участники: ${scores.subjects.map((s) => `${s.id} (${s.type})`).join(", ")}
 - Кадров: ${rows.length} · оценено вслепую: ${ratedCount}${ratings?.rater ? ` (оценщик: ${ratings.rater})` : ""}${ratedCount ? "" : " — **ratings.json ещё нет: решающей метрики нет, выводы ниже только по автометрикам**"}
-- Расход (все прогоны B0): насчитано ${formatUsd(ledger.spentUsd)} по прайсу${ledger.reconciled ? `, по fal.ai Usage ${formatUsd(ledger.reconciled.actualUsd)} (сверено ${ledger.reconciled.at.slice(0, 10)})` : ""}; потолок проверяется по ${formatUsd(effectiveSpent(ledger))} (запас ×${COST_SAFETY_FACTOR}) из ${formatUsd(SPEND_CEILING_USD)}
+- Расход (все прогоны B0): насчитано ${formatUsd(ledger.spentUsd)} по прайсу${ledger.reconciled ? `, по fal.ai Usage ${formatUsd(ledger.reconciled.actualUsd)} (сверено ${ledger.reconciled.at.slice(0, 10)})` : ""}; потолок B0 проверяется по ${formatUsd(effectiveSpent(ledger))} (с запасом по моделям, без демо) из ${formatUsd(SPEND_CEILING_USD)}
 
 ## 1. Модели — все участники
 

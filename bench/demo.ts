@@ -11,19 +11,24 @@
  * public/demo/edits/<tool>-<option>.webp (1080×1350) + a manifest snippet in
  * bench/runs/<run>/demo/. New file names only — nothing existing is overwritten.
  * The owner reviews them and adds them to git.
+ *
+ * Not part of B0: outside bench:forecast and the $17 ceiling. Runs only when
+ * the owner decides; shows its plan and its own spend, and records its calls
+ * in spend.json as phase "demo". Guard: total spend (B0 + demo, with the
+ * margin) ≤ DEMO.ceilingUsd ($20, the fal.ai balance).
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { shootStyles } from "../src/config/styles";
 import { DEMO, MAX_CONCURRENCY } from "./config";
-import { formatUsd, type Size } from "./lib/cost";
+import { demoSpent, formatUsd, type Size } from "./lib/cost";
 import { getFalKey } from "./lib/env";
 import { confirm, fail, parseCommonArgs, printPlan } from "./lib/cli";
 import { execute } from "./lib/execute";
 import { upload } from "./lib/fal";
 import { analyzeFace, cosine, defectOf, largestFace } from "./lib/face";
 import { downloadImage, exportWebp, normalizeSelfie } from "./lib/images";
-import { Spend } from "./lib/ledger";
+import { DEMO_BUDGET, Spend } from "./lib/ledger";
 import { buildFrameInput, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse } from "./lib/models";
 import { demoCandidateFile, demoEditFile, demoItems } from "./lib/plans";
 import { ROOT, resolveRunId, runDir } from "./lib/paths";
@@ -36,7 +41,7 @@ const args = parseCommonArgs();
 if (!args.model) fail("Pass the winning model: npm run bench:demo -- --model=<nb21|nbpro|seedream|flux3>");
 const model = getModel(args.model);
 const editModel = getModel(args.editModel ?? args.model);
-const spend = new Spend();
+const spend = new Spend(undefined, DEMO_BUDGET);
 const runId = resolveRunId(args.run);
 const RUN = runDir(runId);
 const DIR = path.join(RUN, "demo");
@@ -65,7 +70,8 @@ const candFile = (style: string, k: number) => demoCandidateFile(runId, style, k
 const editFile = (tool: string, option: string) => demoEditFile(runId, tool, option);
 
 console.log(`Demo heroine: ${personaId}${persona ? "" : " (planned)"} · shoot model: ${model.label} · edits model: ${editModel.label}`);
-const runnable = new Set(printPlan("bench:demo", [...styleItems, ...editItems], spend.snapshot()).map((i) => i.key));
+console.log(`Demo runs after B0 and outside its $17 ceiling; guard: total B0 + demo with margin ≤ ${formatUsd(DEMO.ceilingUsd)}. Spent on demo so far: ${formatUsd(demoSpent(spend.snapshot()))} (list price).`);
+const runnable = new Set(printPlan("bench:demo", [...styleItems, ...editItems], spend.snapshot(), DEMO_BUDGET).map((i) => i.key));
 if (args.dryRun) {
   console.log("\nDry run — nothing was called.");
   process.exit(0);

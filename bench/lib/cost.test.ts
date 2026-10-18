@@ -2,8 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { LORA, MODELS, OUTPUT, PERSONAS, SPEND_CEILING_USD, UPSCALE } from "../config";
 import type { Pricing } from "../config";
-import { billedMp, callCost, MP_FLUX, canSpend, effectiveSpent, emptyLedger, fitUnderCeiling, reconcile, record, remaining, summarize, withMargin, type PlanItem } from "./cost";
-import { COST_SAFETY_FACTOR } from "../config";
+import { billedMp, callCost, MP_FLUX, canSpend, demoSpent, effectiveSpent, emptyLedger, fitUnderCeiling, reconcile, record, remaining, summarize, type PlanItem } from "./cost";
+import { marginForKey } from "./margins";
 import { frameCost, loraFrameCost, loraTrainCost, PLANNED_SELFIE_SIZE } from "./models";
 
 describe("callCost", () => {
@@ -30,7 +30,7 @@ describe("callCost", () => {
     expect(frameCost(MODELS.nb21, refs.slice(0, 2))).toBeGreaterThanOrEqual(0.044); // ≥ fal's measured 2-input 1K edit
     expect(frameCost(MODELS.nbpro, refs)).toBe(0.15);
     expect(frameCost(MODELS.seedream, refs)).toBe(0.04);
-    expect(frameCost(MODELS.flux3, refs)).toBe(0.048); // flat 1k tier
+    expect(frameCost(MODELS.flux3, refs)).toBe(0.096); // 2 MP per call × $0.048 — fal.ai Usage 2026-10-18
   });
 
   it("LoRA training scales with steps; generation per MP", () => {
@@ -47,19 +47,20 @@ describe("callCost", () => {
 });
 
 describe("plan and ceiling", () => {
+  // marginFactor 1 here: these tests are about the ceiling logic at list prices.
   const items: PlanItem[] = [
-    { key: "a", group: "g1", label: "a", costUsd: 5 },
-    { key: "b", group: "g1", label: "b", costUsd: 5, cached: true },
-    { key: "c", group: "g2", label: "c", costUsd: 7 },
-    { key: "d", group: "g2", label: "d", costUsd: 6 },
+    { key: "a", group: "g1", label: "a", costUsd: 5, marginFactor: 1 },
+    { key: "b", group: "g1", label: "b", costUsd: 5, marginFactor: 1, cached: true },
+    { key: "c", group: "g2", label: "c", costUsd: 7, marginFactor: 1 },
+    { key: "d", group: "g2", label: "d", costUsd: 6, marginFactor: 1 },
   ];
 
   it("summarizes only what still has to run", () => {
     const s = summarize(items);
-    expect(s).toMatchObject({ items: 4, toRun: 3, cached: 1, costUsd: 18 });
+    expect(s).toMatchObject({ items: 4, toRun: 3, cached: 1, costUsd: 18, marginUsd: 18 });
     expect(s.byGroup).toEqual([
-      { group: "g1", calls: 1, costUsd: 5 },
-      { group: "g2", calls: 2, costUsd: 13 },
+      { group: "g1", calls: 1, costUsd: 5, marginUsd: 5 },
+      { group: "g2", calls: 2, costUsd: 13, marginUsd: 13 },
     ]);
   });
 
@@ -69,17 +70,17 @@ describe("plan and ceiling", () => {
     expect(cut.map((i) => i.key)).toEqual(["d"]);
   });
 
-  it("counts what was already spent in earlier runs (list prices, factor 1)", () => {
-    const ledger = record(emptyLedger(), { at: "x", key: "old", usd: 10, status: "ok" });
-    const { cut } = fitUnderCeiling(items, ledger, SPEND_CEILING_USD, 1);
+  it("counts what was already spent in earlier runs", () => {
+    const ledger = record(emptyLedger(), { at: "x", key: "old", usd: 10, status: "ok", margin: 1 });
+    const { cut } = fitUnderCeiling(items, ledger, SPEND_CEILING_USD);
     expect(cut.map((i) => i.key)).toEqual(["c", "d"]);
   });
 
-  it("allows exactly reaching the ceiling, never crossing it (factor 1)", () => {
-    const ledger = record(emptyLedger(), { at: "x", key: "k", usd: 16.9, status: "ok" });
-    expect(canSpend(ledger, 0, 0.1, 17, 1)).toBe(true);
-    expect(canSpend(ledger, 0, 0.1001, 17, 1)).toBe(false);
-    expect(canSpend(ledger, 0.05, 0.08, 17, 1)).toBe(false); // in-flight reservations count
+  it("allows exactly reaching the ceiling, never crossing it", () => {
+    const ledger = record(emptyLedger(), { at: "x", key: "k", usd: 16.9, status: "ok", margin: 1 });
+    expect(canSpend(ledger, 0, 0.1, 17)).toBe(true);
+    expect(canSpend(ledger, 0, 0.1001, 17)).toBe(false);
+    expect(canSpend(ledger, 0.05, 0.08, 17)).toBe(false); // in-flight reservations count
   });
 
   it("free failures do not count, unknown failures do", () => {
@@ -89,54 +90,69 @@ describe("plan and ceiling", () => {
     expect(l.spentUsd).toBe(0.08);
   });
 
-  it("the default plan (3 real + 5 synthetic) leaves room for the demo under $17", () => {
+  it("the default run (3 real + 5 synthetic, 4 models + LoRA): list price and with margins", () => {
     const refs = Array.from({ length: 6 }, () => PLANNED_SELFIE_SIZE);
-    const perSubject = (["nb21", "nbpro", "seedream", "flux3"] as const).reduce((s, k) => s + frameCost(MODELS[k], refs) * 4, 0);
-    const run = 8 * perSubject + loraTrainCost() + 4 * loraFrameCost();
-    const personas = 5 * (0.02 + 6 * 0.03);
-    const upscale = 3 * callCost(UPSCALE.pricing, { output: UPSCALE.plannedOutput });
-    const demoNbPro = 17 * 0.15; // most expensive winner
-    expect(Math.round(run * 100) / 100).toBe(11.73);
-    expect(run + personas + upscale + demoNbPro).toBeLessThanOrEqual(SPEND_CEILING_USD);
+    const keys = ["nb21", "nbpro", "seedream", "flux3"] as const;
+    const list = 8 * keys.reduce((s, k) => s + frameCost(MODELS[k], refs) * 4, 0) + loraTrainCost() + 4 * loraFrameCost();
+    const margin = 8 * keys.reduce((s, k) => s + frameCost(MODELS[k], refs) * 4 * MODELS[k].marginFactor, 0) + loraTrainCost() * LORA.trainMargin + 4 * loraFrameCost() * LORA.generateMargin;
+    expect(Math.round(list * 100) / 100).toBe(13.26);
+    expect(Math.round(margin * 100) / 100).toBe(14.09);
   });
 });
 
-describe("safety margin and reconciliation", () => {
-  it("default factor is 1.2 and applies to every planned price", () => {
-    expect(COST_SAFETY_FACTOR).toBe(1.2);
-    expect(withMargin(10)).toBe(12);
-    // $14 counted → $16.80 with margin: a $0.15 call ($0.18) still fits, $0.20 ($0.24) does not.
-    const l = record(emptyLedger(), { at: "x", key: "k", usd: 14, status: "ok" });
-    expect(effectiveSpent(l)).toBe(16.8);
-    expect(canSpend(l, 0, 0.15, 17)).toBe(true);
-    expect(canSpend(l, 0, 0.2, 17)).toBe(false);
+describe("per-model margins, reconciliation, demo outside B0", () => {
+  it("margins from the fal.ai Usage breakdown (2026-10-18)", () => {
+    expect(marginForKey("synth-01/reference")).toBe(1.0); // qwen-image, confirmed
+    expect(marginForKey("synth-01/selfie-3")).toBe(1.0); // qwen-image-edit-2511, confirmed
+    expect(marginForKey("real-01/nb21/corporate-gray-1")).toBe(1.0); // plan above the bill
+    expect(marginForKey("real-01/nb21-noattr/corporate-gray-1")).toBe(1.0);
+    expect(marginForKey("real-01/flux3/corporate-gray-1")).toBe(1.0); // at $0.096, confirmed
+    expect(marginForKey("real-01/nbpro/corporate-gray-1")).toBe(1.1);
+    expect(marginForKey("real-01/seedream/corporate-gray-1")).toBe(1.1);
+    expect(marginForKey("real-01/lora/train")).toBe(1.1);
+    expect(marginForKey("real-01/lora/modern-office-2")).toBe(1.1);
+    expect(marginForKey("upscale/real-01/nbpro/x.jpg")).toBe(1.2);
+    expect(marginForKey("real-01/analyze/selfie-1.jpg")).toBe(1.5);
+    expect(marginForKey("something/unknown")).toBe(1.2);
   });
 
-  it("ceiling uses max(counted × 1.2, reconciled + later calls × 1.2)", () => {
-    let l = record(emptyLedger(), { at: "x", key: "smoke", usd: 1.44, status: "ok" });
-    expect(effectiveSpent(l)).toBe(1.728);
+  it("plan items and the cut-off use each item's margin", () => {
+    const items: PlanItem[] = [
+      { key: "real-01/nbpro/a-1", group: "g", label: "a", costUsd: 10 }, // ×1.1 → 11
+      { key: "real-01/nb21/a-1", group: "g", label: "b", costUsd: 5.5 }, // ×1.0 → 5.5
+      { key: "real-01/analyze/s.jpg", group: "g", label: "c", costUsd: 0.4 }, // ×1.5 → 0.6
+    ];
+    expect(summarize(items).marginUsd).toBe(17.1);
+    expect(fitUnderCeiling(items, emptyLedger(), 17).cut.map((i) => i.label)).toEqual(["c"]);
+  });
+
+  it("ceiling uses max(Σ counted × margin, reconciled + Σ calls since then × margin)", () => {
+    // Smoke test: personas $1.00 (×1.0), nb21 $0.2464 (×1.0), flux3 counted at the old $0.048 × 4 = $0.192 (×1.0).
+    let l = record(emptyLedger(), { at: "1", key: "synth-01/reference", usd: 1, status: "ok" });
+    l = record(l, { at: "2", key: "synth-01/nb21/corporate-gray-1", usd: 0.2464, status: "ok" });
+    l = record(l, { at: "3", key: "synth-01/flux3/corporate-gray-1", usd: 0.192, status: "ok" });
+    expect(effectiveSpent(l)).toBe(1.4384); // legacy entries: margin from the key
     l = reconcile(l, 1.61, "2026-10-18T10:00:00Z");
-    expect(l.reconciled).toEqual({ actualUsd: 1.61, countedUsd: 1.44, at: "2026-10-18T10:00:00Z" });
-    expect(effectiveSpent(l)).toBe(1.728); // 1.44 × 1.2 > 1.61
-    l = record(l, { at: "y", key: "run", usd: 1, status: "ok" });
-    expect(effectiveSpent(l)).toBe(2.928); // max(2.44 × 1.2 = 2.928, 1.61 + 1 × 1.2 = 2.81)
-    const worse = reconcile(record(emptyLedger(), { at: "x", key: "k", usd: 1, status: "ok" }), 1.5);
-    expect(effectiveSpent(worse)).toBe(1.5); // actual above counted × 1.2 → actual wins
-    expect(remaining(worse, 17)).toBe(15.5);
+    expect(l.reconciled).toMatchObject({ actualUsd: 1.61, entryCount: 3, demoUsd: 0 });
+    expect(effectiveSpent(l)).toBe(1.61); // the bill wins
+    l = record(l, { at: "4", key: "real-01/nbpro/corporate-gray-1", usd: 1, status: "ok", margin: 1.1 });
+    expect(effectiveSpent(l)).toBe(2.71); // 1.61 + 1 × 1.1
+    expect(remaining(l, 17)).toBe(14.29);
+  });
+
+  it("demo calls are outside the B0 ceiling but inside the total", () => {
+    let l = record(emptyLedger(), { at: "1", key: "real-01/nb21/a-1", usd: 10, status: "ok", margin: 1 });
+    l = record(l, { at: "2", key: "demo/studio-white-1", usd: 3, status: "ok", margin: 1.1, phase: "demo" });
+    expect(demoSpent(l)).toBe(3);
+    expect(effectiveSpent(l, "b0")).toBe(10);
+    expect(effectiveSpent(l, "all")).toBe(13.3);
+    const r = reconcile(l, 14);
+    expect(effectiveSpent(r, "b0")).toBe(11); // 14 actual − 3 demo (list) — the rest stays on B0
+    expect(effectiveSpent(r, "all")).toBe(14);
   });
 
   it("rejects a bad --actual", () => {
     expect(() => reconcile(emptyLedger(), Number.NaN)).toThrow();
     expect(() => reconcile(emptyLedger(), -1)).toThrow();
-  });
-
-  it("the plan cut-off counts every item with the margin", () => {
-    const items: PlanItem[] = [
-      { key: "a", group: "g", label: "a", costUsd: 7 },
-      { key: "b", group: "g", label: "b", costUsd: 7 },
-    ];
-    // 2 × $7 → $16.80 with margin: fits; a 3rd call of $0.20 ($0.24) would cross $17 although $14.20 at list prices would not.
-    expect(fitUnderCeiling(items, emptyLedger(), 17).cut).toEqual([]);
-    expect(fitUnderCeiling([...items, { key: "c", group: "g", label: "c", costUsd: 0.2 }], emptyLedger(), 17).cut.map((i) => i.key)).toEqual(["c"]);
   });
 });

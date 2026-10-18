@@ -147,6 +147,7 @@ export function demoItems(runId: string, model: BenchModel, editModel: BenchMode
       group: `demo: 12 styles · ${model.label}`,
       label: `${s.name} candidate ${i + 1}`,
       costUsd: styleCost,
+      marginFactor: model.marginFactor,
       cached: existsSync(demoCandidateFile(runId, s.id, i + 1)),
       style: s.id,
       k: i + 1,
@@ -158,6 +159,7 @@ export function demoItems(runId: string, model: BenchModel, editModel: BenchMode
     group: `demo: Studio edits · ${editModel.label}`,
     label: `${e.tool} → ${e.option}`,
     costUsd: editCost,
+    marginFactor: editModel.marginFactor,
     cached: existsSync(demoEditFile(runId, e.tool, e.option)),
     ...e,
   }));

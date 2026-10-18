@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { SPEND_CEILING_USD } from "../config";
-import { canSpend, effectiveSpent, emptyLedger, record, round, type Ledger } from "./cost";
+import { DEMO, SPEND_CEILING_USD } from "../config";
+import { canSpend, effectiveSpent, emptyLedger, record, round, type Ledger, type LedgerEntry, type Phase, type Scope } from "./cost";
 import { SPEND_FILE } from "./paths";
 
 export function loadLedger(file = SPEND_FILE): Ledger {
@@ -21,6 +21,14 @@ function save(ledger: Ledger, file: string) {
   renameSync(tmp, file);
 }
 
+/** A ceiling: amount, which spend it counts, and the phase new calls are recorded under. */
+export type Budget = { ceilingUsd: number; scope: Scope; phase: Phase; label: string };
+
+/** B0: $17, demo calls not counted. */
+export const B0_BUDGET: Budget = { ceilingUsd: SPEND_CEILING_USD, scope: "b0", phase: "b0", label: "B0 ceiling" };
+/** bench:demo: after B0, outside the $17 — checked against the total spend (B0 + demo). */
+export const DEMO_BUDGET: Budget = { ceilingUsd: DEMO.ceilingUsd, scope: "all", phase: "demo", label: "demo ceiling (total B0 + demo)" };
+
 /**
  * Spending guard shared by every command. `reserve` is checked before each
  * call against everything spent + in flight; `settle` records the outcome.
@@ -31,11 +39,14 @@ export class Spend {
   private reserved = 0;
   private chain: Promise<unknown> = Promise.resolve();
 
+  readonly budget: Budget;
+
   constructor(
     private readonly file = SPEND_FILE,
-    private readonly ceiling = SPEND_CEILING_USD,
+    ceilingOrBudget: number | Budget = B0_BUDGET,
   ) {
     this.ledger = loadLedger(file);
+    this.budget = typeof ceilingOrBudget === "number" ? { ...B0_BUDGET, ceilingUsd: ceilingOrBudget } : ceilingOrBudget;
   }
 
   /** Counted at list prices. */
@@ -45,7 +56,7 @@ export class Spend {
 
   /** What the ceiling is checked against (safety factor, reconciled actual). */
   get effective() {
-    return effectiveSpent(this.ledger);
+    return effectiveSpent(this.ledger, this.budget.scope);
   }
 
   snapshot(): Ledger {
@@ -58,19 +69,21 @@ export class Spend {
     return next;
   }
 
-  /** true → the call may start; its cost is held until `settle`. */
-  reserve(costUsd: number): Promise<boolean> {
+  /** true → the call may start; its cost × margin is held until `settle`. */
+  reserve(costUsd: number, margin = 1): Promise<boolean> {
     return this.serial(() => {
-      if (!canSpend(this.ledger, this.reserved, costUsd, this.ceiling)) return false;
-      this.reserved = round(this.reserved + costUsd);
+      const held = round(costUsd * margin);
+      if (!canSpend(this.ledger, this.reserved, held, this.budget.ceilingUsd, this.budget.scope)) return false;
+      this.reserved = round(this.reserved + held);
       return true;
     });
   }
 
-  settle(entry: { key: string; usd: number; status: "ok" | "failed-charged" | "failed-free"; requestId?: string }, reservedUsd: number): Promise<void> {
+  /** Records the call (list price + margin) and releases what `reserve` held (`heldUsd` = cost × margin). */
+  settle(entry: Omit<LedgerEntry, "at" | "phase">, heldUsd: number): Promise<void> {
     return this.serial(() => {
-      this.reserved = round(Math.max(0, this.reserved - reservedUsd));
-      this.ledger = record(this.ledger, { ...entry, at: new Date().toISOString() });
+      this.reserved = round(Math.max(0, this.reserved - heldUsd));
+      this.ledger = record(this.ledger, { ...entry, at: new Date().toISOString(), ...(this.budget.phase === "demo" ? { phase: "demo" as const } : {}) });
       save(this.ledger, this.file);
     });
   }

@@ -1,17 +1,14 @@
 /**
  * B0 forecast maths — pure, tested in forecast.test.ts.
  *
- * Steps are planned in the order they run; every price gets the safety factor;
- * the starting point is effectiveSpent() (counted × factor, or the reconciled
- * fal.ai total + later calls × factor). When the whole plan does not fit
- * under the ceiling, cuts are tried in a fixed order (docs/07 §11):
- *   1. the attribute ablation nb21-noattr: 4 subjects → 2;
- *   2. DEMO candidates per style: N → … → 1.
- * The main run is never cut. Whatever still does not fit is shown as the
- * calls the ceiling will refuse at the end (the demo is last).
+ * Steps are planned in the order they run; every price gets its model's
+ * margin; the starting point is effectiveSpent() (Σ counted × margin, or the
+ * reconciled fal.ai total + later calls × margin). When the plan does not fit
+ * under the ceiling, the options are tried in order (for B0: the ablation
+ * nb21-noattr 4 → 2 subjects, docs/07 §11). The main run is never cut;
+ * whatever still does not fit is reported, never silently dropped.
  */
-import { COST_SAFETY_FACTOR } from "../config";
-import { effectiveSpent, fitUnderCeiling, round, summarize, withMargin, type Ledger, type PlanItem } from "./cost";
+import { effectiveSpent, fitUnderCeiling, round, summarize, type Ledger, type PlanItem } from "./cost";
 
 export type ForecastStep = { name: string; items: PlanItem[] };
 
@@ -30,15 +27,15 @@ export type Forecast = {
   cut: PlanItem[];
 };
 
-export function forecast(ledger: Ledger, steps: ForecastStep[], ceilingUsd: number, factor = COST_SAFETY_FACTOR): Forecast {
+export function forecast(ledger: Ledger, steps: ForecastStep[], ceilingUsd: number): Forecast {
   const rows = steps.map((s) => {
     const sum = summarize(s.items);
-    return { name: s.name, calls: sum.toRun, listUsd: sum.costUsd, marginUsd: withMargin(sum.costUsd, factor) };
+    return { name: s.name, calls: sum.toRun, listUsd: sum.costUsd, marginUsd: sum.marginUsd };
   });
   const toRunListUsd = round(rows.reduce((a, r) => a + r.listUsd, 0));
   const toRunMarginUsd = round(rows.reduce((a, r) => a + r.marginUsd, 0));
-  const spentEffectiveUsd = effectiveSpent(ledger, factor);
-  const { cut } = fitUnderCeiling(steps.flatMap((s) => s.items), ledger, ceilingUsd, factor);
+  const spentEffectiveUsd = effectiveSpent(ledger);
+  const { cut } = fitUnderCeiling(steps.flatMap((s) => s.items), ledger, ceilingUsd);
   return {
     spentCountedUsd: ledger.spentUsd,
     spentEffectiveUsd,
@@ -65,10 +62,10 @@ export function cutOptions(full: CutOption, reducedAblation: number): CutOption[
 }
 
 /** First option whose forecast fits; otherwise the last (most reduced) one, with what the ceiling will cut. */
-export function chooseCuts(options: CutOption[], build: (o: CutOption) => ForecastStep[], ledger: Ledger, ceilingUsd: number, factor = COST_SAFETY_FACTOR): { option: CutOption; forecast: Forecast; applied: string[] } {
+export function chooseCuts(options: CutOption[], build: (o: CutOption) => ForecastStep[], ledger: Ledger, ceilingUsd: number): { option: CutOption; forecast: Forecast; applied: string[] } {
   let last: { option: CutOption; forecast: Forecast } | null = null;
   for (const option of options) {
-    const f = forecast(ledger, build(option), ceilingUsd, factor);
+    const f = forecast(ledger, build(option), ceilingUsd);
     last = { option, forecast: f };
     if (f.fits) break;
   }

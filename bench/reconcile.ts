@@ -4,11 +4,12 @@
  *   npm run bench:reconcile -- --actual=1.61
  *
  * Stored in bench/runs/spend.json as "reconciled". From then on the ceiling is
- * checked against max(counted × margin, actual + calls since then × margin).
+ * checked against max(Σ counted × margin, actual + Σ calls since then × margin),
+ * each call with its model's margin. Run it after every paid step.
  */
-import { COST_SAFETY_FACTOR, SPEND_CEILING_USD } from "./config";
+import { SPEND_CEILING_USD } from "./config";
 import { fail, parseCommonArgs, printSpent } from "./lib/cli";
-import { formatUsd, reconcile } from "./lib/cost";
+import { effectiveSpent, formatUsd, reconcile } from "./lib/cost";
 import { loadLedger, saveLedger } from "./lib/ledger";
 
 const args = parseCommonArgs();
@@ -17,8 +18,9 @@ const before = loadLedger();
 const after = reconcile(before, args.actual!);
 const diff = after.reconciled!.actualUsd - before.spentUsd;
 console.log(`Counted at list prices: ${formatUsd(before.spentUsd)}; fal.ai Usage: ${formatUsd(after.reconciled!.actualUsd)} (${diff >= 0 ? "+" : ""}${formatUsd(diff)}${before.spentUsd ? `, ${((diff / before.spentUsd) * 100).toFixed(0)}%` : ""}).`);
-if (before.spentUsd && after.reconciled!.actualUsd / before.spentUsd > COST_SAFETY_FACTOR) {
-  console.log(`⚠ The real bill is more than ×${COST_SAFETY_FACTOR} the list prices — raise COST_SAFETY_FACTOR or the prices in bench/config.ts before the next paid step.`);
+const withMargins = effectiveSpent({ ...before, reconciled: undefined }, "all");
+if (after.reconciled!.actualUsd > withMargins + 1e-9) {
+  console.log(`⚠ The real bill (${formatUsd(after.reconciled!.actualUsd)}) is above the counted spend with margins (${formatUsd(withMargins)}) — check the fal.ai Usage breakdown by model and raise that model's price or marginFactor in bench/config.ts before the next paid step.`);
 }
 if (args.dryRun) {
   console.log("Dry run — spend.json not changed.");

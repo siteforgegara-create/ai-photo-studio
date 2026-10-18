@@ -1,4 +1,5 @@
-import { formatUsd } from "./cost";
+import { formatUsd, withMargin } from "./cost";
+import { marginForKey } from "./margins";
 import { callFal } from "./fal";
 import type { Spend } from "./ledger";
 import { appendLog, type CallLog } from "./log";
@@ -9,6 +10,8 @@ export type Job<T> = {
   endpoint: string;
   input: Record<string, unknown>;
   costUsd: number;
+  /** Safety margin; default: marginForKey(key). */
+  marginFactor?: number;
   meta?: Pick<CallLog, "subject" | "model" | "style" | "n" | "promptHash">;
   /** Saves the result (download etc.) and returns what goes into the log. */
   save: (data: T) => Promise<CallLog["output"]>;
@@ -22,7 +25,9 @@ export type JobResult = "ok" | "failed" | "skipped";
  */
 export async function execute<T>(job: Job<T>, spend: Spend, logFile: string): Promise<JobResult> {
   const base = { at: new Date().toISOString(), key: job.key, kind: job.kind, endpoint: job.endpoint, ...job.meta };
-  if (!(await spend.reserve(job.costUsd))) {
+  const margin = job.marginFactor ?? marginForKey(job.key);
+  const held = withMargin(job.costUsd, margin);
+  if (!(await spend.reserve(job.costUsd, margin))) {
     appendLog(logFile, { ...base, usd: 0, status: "skipped-ceiling" });
     console.log(`  ⛔ ${job.key}: skipped — would cross the spending ceiling`);
     return "skipped";
@@ -36,13 +41,13 @@ export async function execute<T>(job: Job<T>, spend: Spend, logFile: string): Pr
     } catch (e) {
       error = `saving the result failed: ${e instanceof Error ? e.message : String(e)}`;
     }
-    await spend.settle({ key: job.key, usd: job.costUsd, status: "ok", requestId: res.requestId }, job.costUsd);
+    await spend.settle({ key: job.key, usd: job.costUsd, status: "ok", requestId: res.requestId, margin }, held);
     appendLog(logFile, { ...base, requestId: res.requestId, ms: res.ms, usd: job.costUsd, status: "ok", output, response: summarizeResponse(res.data), error });
     console.log(`  ${error ? "⚠" : "✓"} ${job.key}  ${(res.ms / 1000).toFixed(1)}s  ${formatUsd(job.costUsd)}${error ? `  ${error}` : ""}`);
     return error ? "failed" : "ok";
   }
   const status = res.charged ? "failed-charged" : "failed-free";
-  await spend.settle({ key: job.key, usd: job.costUsd, status, requestId: res.requestId }, job.costUsd);
+  await spend.settle({ key: job.key, usd: job.costUsd, status, requestId: res.requestId, margin }, held);
   appendLog(logFile, { ...base, requestId: res.requestId, ms: res.ms, usd: res.charged ? job.costUsd : 0, status, error: res.error });
   console.log(`  ✖ ${job.key}: ${res.error}${res.charged ? " (counted as spent)" : ""}`);
   return "failed";

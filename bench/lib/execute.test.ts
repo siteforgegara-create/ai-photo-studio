@@ -21,20 +21,20 @@ describe("Spend (ceiling guard)", () => {
   it("parallel reservations never exceed the ceiling", async () => {
     const { spendFile } = tmp();
     const spend = new Spend(spendFile, 17);
-    const results = await Promise.all(Array.from({ length: 10 }, () => spend.reserve(2)));
-    expect(results.filter(Boolean)).toHaveLength(7); // with the ×1.2 margin each is $2.40: 7 × 2.4 = $16.80; the 8th would make $19.20
+    const results = await Promise.all(Array.from({ length: 10 }, () => spend.reserve(2, 1.1)));
+    expect(results.filter(Boolean)).toHaveLength(7); // ×1.1 → $2.20 each: 7 × 2.2 = $15.40; the 8th would make $17.60
   });
 
   it("persists settled spend across processes (spend.json)", async () => {
     const { spendFile } = tmp();
     const a = new Spend(spendFile, 17);
-    await a.reserve(3);
-    await a.settle({ key: "k", usd: 3, status: "ok" }, 3);
+    await a.reserve(3, 1.2);
+    await a.settle({ key: "k", usd: 3, status: "ok", margin: 1.2 }, 3.6);
     const b = new Spend(spendFile, 17);
     expect(b.spent).toBe(3);
-    expect(b.effective).toBe(3.6); // counted × 1.2
-    expect(await b.reserve(11)).toBe(true); // 3.6 + 13.2 = 16.8
-    expect(await b.reserve(0.2)).toBe(false); // + 0.24 → 17.04
+    expect(b.effective).toBe(3.6); // counted × its margin
+    expect(await b.reserve(13.4)).toBe(true); // 3.6 + 13.4 = 17.0
+    expect(await b.reserve(0.01)).toBe(false);
   });
 });
 
@@ -56,6 +56,7 @@ describe("execute", () => {
     const { spendFile, logFile } = tmp();
     const spend = new Spend(spendFile, 0.1);
     callFal.mockResolvedValue({ ok: true, data: {}, requestId: "r", ms: 1 });
+    // Keys without a known model get DEFAULT_MARGIN (1.2).
     expect(await execute(job("a", 0.09), spend, logFile)).toBe("skipped"); // 0.108 with margin
     expect(await execute(job("b", 0.08), spend, logFile)).toBe("ok"); // fits: 0.096 ≤ 0.10
     expect(await execute(job("c", 0.08), spend, logFile)).toBe("skipped"); // 0.192 would cross

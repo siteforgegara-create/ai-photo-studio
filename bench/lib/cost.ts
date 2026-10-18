@@ -2,7 +2,8 @@
  * Pure cost maths: price of one call, plan totals and the hard ceiling.
  * No I/O here — unit-tested in cost.test.ts.
  */
-import { COST_SAFETY_FACTOR, type Pricing } from "../config";
+import type { Pricing } from "../config";
+import { marginForKey } from "./margins";
 
 export type Size = { width: number; height: number };
 
@@ -63,26 +64,40 @@ export type PlanItem = {
   key: string;
   group: string;
   label: string;
+  /** List price. */
   costUsd: number;
+  /** Safety margin; default: marginForKey(key). */
+  marginFactor?: number;
   /** Already done (cached) — costs nothing now. */
   cached?: boolean;
 };
+
+export function itemMargin(item: Pick<PlanItem, "key" | "marginFactor">): number {
+  return item.marginFactor ?? marginForKey(item.key);
+}
+
+/** List price × margin. */
+export function withMargin(usd: number, factor: number): number {
+  return round(usd * factor);
+}
 
 export type PlanSummary = {
   items: number;
   toRun: number;
   cached: number;
   costUsd: number;
-  byGroup: { group: string; calls: number; costUsd: number }[];
+  marginUsd: number;
+  byGroup: { group: string; calls: number; costUsd: number; marginUsd: number }[];
 };
 
 export function summarize(items: PlanItem[]): PlanSummary {
   const todo = items.filter((i) => !i.cached);
-  const groups = new Map<string, { calls: number; costUsd: number }>();
+  const groups = new Map<string, { calls: number; costUsd: number; marginUsd: number }>();
   for (const i of todo) {
-    const g = groups.get(i.group) ?? { calls: 0, costUsd: 0 };
+    const g = groups.get(i.group) ?? { calls: 0, costUsd: 0, marginUsd: 0 };
     g.calls += 1;
     g.costUsd = round(g.costUsd + i.costUsd);
+    g.marginUsd = round(g.marginUsd + i.costUsd * itemMargin(i));
     groups.set(i.group, g);
   }
   return {
@@ -90,64 +105,104 @@ export function summarize(items: PlanItem[]): PlanSummary {
     toRun: todo.length,
     cached: items.length - todo.length,
     costUsd: round(todo.reduce((s, i) => s + i.costUsd, 0)),
+    marginUsd: round(todo.reduce((s, i) => s + i.costUsd * itemMargin(i), 0)),
     byGroup: [...groups.entries()].map(([group, v]) => ({ group, ...v })),
   };
 }
 
 // ─── Ceiling ────────────────────────────────────────────────────────────────
 
+export type LedgerEntry = {
+  at: string;
+  key: string;
+  /** List price counted for the call (0 for failures rejected at submit). */
+  usd: number;
+  status: "ok" | "failed-charged" | "failed-free";
+  requestId?: string;
+  phase?: Phase;
+  /** Margin at the time of the call; older entries: marginForKey(key). */
+  margin?: number;
+};
+
 export type Ledger = {
   /** Counted at list prices and recorded, across every run. */
   spentUsd: number;
-  entries: { at: string; key: string; usd: number; status: "ok" | "failed-charged" | "failed-free"; requestId?: string }[];
+  entries: LedgerEntry[];
   /**
    * Actual spend from the fal.ai Usage page, entered by the owner
-   * (npm run bench:reconcile -- --actual=1.61). `countedUsd` = what the ledger
-   * had counted at that moment, so later calls are added on top of `actualUsd`.
+   * (npm run bench:reconcile -- --actual=1.61). Calls recorded after it
+   * (entries[entryCount…]) are added on top of `actualUsd` with their margin.
+   * `demoUsd` = demo spend counted at that moment (left out for the B0 ceiling).
    */
-  reconciled?: { actualUsd: number; countedUsd: number; at: string };
+  reconciled?: { actualUsd: number; countedUsd: number; at: string; demoUsd?: number; entryCount?: number };
 };
+
+/** B0 calls vs the demo set (bench:demo runs after B0, outside the $17 ceiling). Missing = "b0". */
+export type Phase = "b0" | "demo";
+
+/**
+ * Which spend a ceiling looks at: "b0" — everything except demo calls (the
+ * $17 B0 ceiling); "all" — everything (the demo's own guard on the total).
+ */
+export type Scope = "b0" | "all";
 
 export function emptyLedger(): Ledger {
   return { spentUsd: 0, entries: [] };
 }
 
-/** List price × safety factor (fal's real bill ran ~12% above list prices in the smoke test). */
-export function withMargin(usd: number, factor = COST_SAFETY_FACTOR): number {
-  return round(usd * factor);
+export function entryMargin(e: LedgerEntry): number {
+  return e.margin ?? marginForKey(e.key);
+}
+
+/** Counted (list price) spend of demo calls. */
+export function demoSpent(ledger: Ledger): number {
+  return round(ledger.entries.filter((e) => e.phase === "demo").reduce((a, e) => a + e.usd, 0));
+}
+
+function sinceReconcile(ledger: Ledger): LedgerEntry[] {
+  const r = ledger.reconciled;
+  if (!r) return [];
+  if (r.entryCount !== undefined) return ledger.entries.slice(r.entryCount);
+  return ledger.entries.filter((e) => e.at > r.at);
 }
 
 /**
  * What the ceiling is checked against:
- * max(counted × factor, reconciled actual + (counted since reconcile) × factor).
+ * max(Σ counted × margin, reconciled actual + Σ calls since then × margin).
+ * Scope "b0" leaves demo calls out (from a reconciled total the demo's
+ * list-price spend at that moment is subtracted — if the demo really cost
+ * more, the rest stays on B0, which is the safe side).
  */
-export function effectiveSpent(ledger: Ledger, factor = COST_SAFETY_FACTOR): number {
-  const counted = ledger.spentUsd * factor;
+export function effectiveSpent(ledger: Ledger, scope: Scope = "b0"): number {
+  const inScope = (e: LedgerEntry) => scope === "all" || e.phase !== "demo";
+  const counted = ledger.entries.filter(inScope).reduce((a, e) => a + e.usd * entryMargin(e), 0);
   const r = ledger.reconciled;
-  const fromActual = r ? r.actualUsd + Math.max(0, ledger.spentUsd - r.countedUsd) * factor : 0;
-  return round(Math.max(counted, fromActual));
+  if (!r) return round(counted);
+  const rDemo = scope === "b0" ? (r.demoUsd ?? 0) : 0;
+  const since = sinceReconcile(ledger).filter(inScope).reduce((a, e) => a + e.usd * entryMargin(e), 0);
+  return round(Math.max(counted, r.actualUsd - rDemo + since));
 }
 
 /**
- * A call may start only if the effective spend, plus everything in flight
- * (`reservedUsd`, list prices), plus this call — both with the safety
- * factor — stays within the ceiling.
+ * A call may start only if the effective spend + everything in flight
+ * (`reservedUsd`, with margin) + this call (`costUsd`, with margin) stays
+ * within the ceiling.
  */
-export function canSpend(ledger: Ledger, reservedUsd: number, costUsd: number, ceilingUsd: number, factor = COST_SAFETY_FACTOR): boolean {
-  return round(effectiveSpent(ledger, factor) + (reservedUsd + costUsd) * factor) <= ceilingUsd + 1e-9;
+export function canSpend(ledger: Ledger, reservedUsd: number, costUsd: number, ceilingUsd: number, scope: Scope = "b0"): boolean {
+  return round(effectiveSpent(ledger, scope) + reservedUsd + costUsd) <= ceilingUsd + 1e-9;
 }
 
 /** Ceiling minus the effective spend (in margin dollars). */
-export function remaining(ledger: Ledger, ceilingUsd: number, factor = COST_SAFETY_FACTOR): number {
-  return round(Math.max(0, ceilingUsd - effectiveSpent(ledger, factor)));
+export function remaining(ledger: Ledger, ceilingUsd: number, scope: Scope = "b0"): number {
+  return round(Math.max(0, ceilingUsd - effectiveSpent(ledger, scope)));
 }
 
 /**
  * Of the planned items (in order), which fit under the ceiling (each item
- * costs list price × factor). Used by the plan printout and the B0 forecast.
+ * costs list price × its margin). Used by the plan printout and the forecast.
  */
-export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: number, factor = COST_SAFETY_FACTOR): { fit: PlanItem[]; cut: PlanItem[] } {
-  let budget = remaining(ledger, ceilingUsd, factor);
+export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: number, scope: Scope = "b0"): { fit: PlanItem[]; cut: PlanItem[] } {
+  let budget = remaining(ledger, ceilingUsd, scope);
   const fit: PlanItem[] = [];
   const cut: PlanItem[] = [];
   for (const item of items) {
@@ -155,7 +210,7 @@ export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: n
       fit.push(item);
       continue;
     }
-    const cost = item.costUsd * factor;
+    const cost = item.costUsd * itemMargin(item);
     if (cost <= budget + 1e-9) {
       fit.push(item);
       budget = round(budget - cost);
@@ -167,7 +222,7 @@ export function fitUnderCeiling(items: PlanItem[], ledger: Ledger, ceilingUsd: n
 }
 
 /** Records a finished call. Failures with an unknown outcome are counted as charged (conservative). */
-export function record(ledger: Ledger, entry: Ledger["entries"][number]): Ledger {
+export function record(ledger: Ledger, entry: LedgerEntry): Ledger {
   const charged = entry.status === "failed-free" ? 0 : entry.usd;
   return { ...ledger, spentUsd: round(ledger.spentUsd + charged), entries: [...ledger.entries, { ...entry, usd: charged }] };
 }
@@ -175,7 +230,7 @@ export function record(ledger: Ledger, entry: Ledger["entries"][number]): Ledger
 /** Stores the actual fal.ai total; the ceiling then counts from it. */
 export function reconcile(ledger: Ledger, actualUsd: number, at = new Date().toISOString()): Ledger {
   if (!(actualUsd >= 0) || !Number.isFinite(actualUsd)) throw new Error(`--actual must be a dollar amount, got ${actualUsd}`);
-  return { ...ledger, reconciled: { actualUsd: round(actualUsd), countedUsd: ledger.spentUsd, at } };
+  return { ...ledger, reconciled: { actualUsd: round(actualUsd), countedUsd: ledger.spentUsd, at, demoUsd: demoSpent(ledger), entryCount: ledger.entries.length } };
 }
 
 export function formatUsd(usd: number): string {

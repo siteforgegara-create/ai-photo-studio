@@ -13,14 +13,16 @@ export const PRICES_CHECKED = "2026-10-18";
 export const SPEND_CEILING_USD = 17;
 
 /**
- * Calibration: after the smoke test fal.ai Usage showed $1.61 against $1.44
- * counted at list prices (+12%). Every planned price is multiplied by this
- * factor in dry-runs, in the ceiling check and in the B0 forecast; output
- * shows both "list price" and "with margin". The ceiling is checked against
- * max(counted × factor, reconciled actual + calls since then × factor) —
- * see effectiveSpent() and `npm run bench:reconcile -- --actual=1.61`.
+ * Calibration (fal.ai Usage by model, 2026-10-18): every price has its own
+ * safety margin (`marginFactor`): 1.0 where the bill confirmed the list price,
+ * more where it is not confirmed yet or billed by tokens. Margins apply in
+ * dry-runs, in the ceiling check and in the forecast; output shows "list
+ * price" and "with margin". The ceiling is checked against
+ * max(Σ counted × margin, reconciled actual + Σ calls since then × margin) —
+ * see effectiveSpent() and `npm run bench:reconcile -- --actual=…`.
+ * A call whose key matches no known price gets DEFAULT_MARGIN.
  */
-export const COST_SAFETY_FACTOR = 1.2;
+export const DEFAULT_MARGIN = 1.2;
 
 /** Generation resolution for the comparison (docs/07 §3: 1K for all). 4:5 portrait. */
 export const OUTPUT = { width: 880, height: 1100 } as const; // 0.968 MP: stays inside the first megapixel for per-MP pricing
@@ -85,6 +87,8 @@ export type BenchModel = {
   maxRefs: number;
   /** Seed is honoured by the endpoint. */
   seed: boolean;
+  /** Safety margin on the planned price (1.0 = confirmed by fal.ai Usage). */
+  marginFactor: number;
   source: Source;
   note?: string;
 };
@@ -99,6 +103,7 @@ export const MODELS: Record<Exclude<ModelKey, "lora">, BenchModel> = {
     pricing: { kind: "tokens", outputImageUsd: 0.0396, inputImageUsd: 0.002, overheadUsd: 0.01 },
     maxRefs: 14,
     seed: true,
+    marginFactor: 1.0, // fal.ai Usage 2026-10-18: $0.221 for 4 frames = $0.0553 per frame, below the planned $0.0616
     source: {
       url: "https://fal.ai/models/google/nano-banana-2.1/edit",
       checked: PRICES_CHECKED,
@@ -113,6 +118,7 @@ export const MODELS: Record<Exclude<ModelKey, "lora">, BenchModel> = {
     pricing: { kind: "per_image", usd: 0.15 }, // 1K/2K; 4K ×2
     maxRefs: 14,
     seed: true,
+    marginFactor: 1.1, // not yet confirmed by the bill
     source: { url: "https://fal.ai/models/fal-ai/nano-banana-pro/edit", checked: PRICES_CHECKED, note: "$0.15 per image (4K: double)" },
   },
   seedream: {
@@ -122,6 +128,7 @@ export const MODELS: Record<Exclude<ModelKey, "lora">, BenchModel> = {
     pricing: { kind: "per_image", usd: 0.04 },
     maxRefs: 10,
     seed: true,
+    marginFactor: 1.1, // not yet confirmed by the bill
     source: { url: "https://fal.ai/models/fal-ai/bytedance/seedream/v4.5/edit", checked: PRICES_CHECKED, note: "$0.04 per image" },
     note: "Minimum output is ~3.7 MP (custom sizes need ≥ 2560×1440 pixels in total), so Seedream runs at 1728×2160 — not 1K like the others. Seedream 5.0 Pro is listed on fal.ai as text-to-image only on the check date.",
   },
@@ -129,15 +136,18 @@ export const MODELS: Record<Exclude<ModelKey, "lora">, BenchModel> = {
     key: "flux3",
     label: "FLUX 3",
     endpoint: "blackforestlabs/flux-3/edit-image",
-    pricing: { kind: "per_image", usd: 0.048 }, // 1k tier (1 MP); 2k / 4k cost more
-    maxRefs: 10,
+    // 2 MP per call × $0.048 — empirical: fal.ai Usage 2026-10-18 billed 8.00 MP for 4 smoke frames
+    // (output 880×1100-class < 1 MP, 6 references of ~1 MP each → the references add 1 MP per call in total).
+    pricing: { kind: "per_image", usd: 0.096 },
+    maxRefs: 10, // all selfies (≤ 8) — never reduced to save money, the comparison must stay fair
     seed: false, // the endpoint schema has no seed field
+    marginFactor: 1.0, // confirmed at $0.096 by the bill
     source: {
       url: "https://fal.ai/models/blackforestlabs/flux-3/edit-image",
       checked: PRICES_CHECKED,
-      note: "\"A 1K (1 MP) image costs $0.048\" (raised from $0.024 on 2026-10-16); up to 10 references; also https://fal.ai/pricing (unit: megapixels)",
+      note: "$0.048 per MP (https://fal.ai/pricing); billed 2 MP per call = $0.096 per frame — empirical, fal.ai Usage 2026-10-18 (8.00 MP for 4 calls with 6 references each). The docs do not say how inputs are counted; with 6 references (~6 MP of input) only 1 MP was added, so inputs appear to be counted as one megapixel in total. Up to 10 references.",
     },
-    note: "Replaces FLUX.2 [pro] (fal-ai/flux-2-pro/edit). Priced per output image by resolution tier; fal.ai does not say whether reference images are billed (BFL's own API prices FLUX 3 per image). Check the fal.ai usage page after the smoke test. No seed parameter, so FLUX 3 frames are not reproducible.",
+    note: "Replaces FLUX.2 [pro] (fal-ai/flux-2-pro/edit). Planned at 2 MP per call ($0.096) from the fal.ai bill: the references add 1 MP per call (6 references gave the same +1 MP; whether 8 references do too is checked by reconcile after the run). No seed parameter, so FLUX 3 frames are not reproducible.",
   },
 };
 
@@ -147,10 +157,12 @@ export const LORA = {
   label: "FLUX LoRA (control)",
   trainEndpoint: "fal-ai/flux-lora-fast-training",
   trainPricing: { kind: "training", usd: 2, baseSteps: 1000 } as Pricing,
+  trainMargin: 1.1, // not yet confirmed by the bill
   steps: 1000,
   triggerWord: "TOKPERSON",
   generateEndpoint: "fal-ai/flux-lora",
   generatePricing: { kind: "per_mp", usd: 0.035 } as Pricing,
+  generateMargin: 1.1, // not yet confirmed by the bill
   sources: [
     { url: "https://fal.ai/models/fal-ai/flux-lora-fast-training", checked: PRICES_CHECKED, note: "$2 per training run, scales linearly with steps (default 1000)" },
     { url: "https://fal.ai/models/fal-ai/flux-lora", checked: PRICES_CHECKED, note: "$0.035 per megapixel, rounded up" },
@@ -166,15 +178,17 @@ export const LORA = {
 export const PERSONAS = {
   referenceEndpoint: "fal-ai/qwen-image",
   referencePricing: { kind: "per_mp", usd: 0.02 } as Pricing,
+  referenceMargin: 1.0, // fal.ai Usage 2026-10-18: 5.00 MP × $0.02 = $0.10, as planned
   referenceSize: { width: 864, height: 1088 },
   selfieEndpoint: "fal-ai/qwen-image-edit-2511",
   selfiePricing: { kind: "per_mp", usd: 0.03 } as Pricing,
+  selfieMargin: 1.0, // fal.ai Usage 2026-10-18: 30.00 MP × $0.03 = $0.90, as planned — input images are not billed
   selfieSize: { width: 864, height: 1152 },
   selfiesPerPersona: 6,
   baseSeed: 4242,
   sources: [
-    { url: "https://fal.ai/models/fal-ai/qwen-image", checked: PRICES_CHECKED, note: "$0.02 per megapixel" },
-    { url: "https://fal.ai/models/fal-ai/qwen-image-edit-2511", checked: PRICES_CHECKED, note: "$0.03 per megapixel; image_urls, image_size, seed" },
+    { url: "https://fal.ai/models/fal-ai/qwen-image", checked: PRICES_CHECKED, note: "$0.02 per megapixel (confirmed by fal.ai Usage 2026-10-18)" },
+    { url: "https://fal.ai/models/fal-ai/qwen-image-edit-2511", checked: PRICES_CHECKED, note: "$0.03 per megapixel of output, input images not billed (confirmed by fal.ai Usage 2026-10-18); image_urls, image_size, seed" },
   ] as Source[],
 };
 
@@ -194,6 +208,7 @@ export const ANALYZE = {
   endpoint: "openrouter/router/vision",
   model: "google/gemini-2.5-flash",
   pricing: { kind: "per_image", usd: 0.003 } as Pricing,
+  marginFactor: 1.5, // token billing, not yet confirmed by the bill
   maxTokens: 400,
   sources: [
     { url: "https://fal.ai/models/openrouter/router/vision", checked: PRICES_CHECKED, note: "charged by input and output tokens; returns usage.cost" },
@@ -232,6 +247,7 @@ export const FORECAST = {
 export const UPSCALE = {
   endpoint: "fal-ai/seedvr/upscale/image",
   pricing: { kind: "per_mp", usd: 0.001 } as Pricing,
+  marginFactor: 1.2,
   /** 4K class: SeedVR2 "target" mode, 2160p. Cost is planned for a 3840×4800 output (conservative). */
   targetResolution: "2160p" as const,
   plannedOutput: { width: 3840, height: 4800 },
@@ -245,6 +261,13 @@ export const UPSCALE = {
  * for the cheaper winners — the plan shows it).
  */
 export const DEMO = {
+  /**
+   * The demo is NOT part of B0 (owner's decision, 18.10.2026): it is left out
+   * of bench:forecast and of the $17 ceiling and runs later, on request. Its
+   * own guard: the TOTAL spend (B0 + demo, with the margin) stays within the
+   * fal.ai balance of $20. Its calls are recorded in spend.json as phase "demo".
+   */
+  ceilingUsd: 20,
   candidatesPerStyle: 1,
   size: { width: 1080, height: 1350 },
 };

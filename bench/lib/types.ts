@@ -27,7 +27,13 @@ export type ScoresFile = {
 /** One frame in the blind review — the model is hidden behind `id`. */
 export type ReviewFrame = { id: string; src: string };
 export type ReviewSubject = { id: string; type: "real" | "synth"; selfies: string[]; frames: ReviewFrame[] };
-export type ReviewData = { run: string; createdAt: string; subjects: ReviewSubject[] };
+export type ReviewData = {
+  run: string;
+  createdAt: string;
+  subjects: ReviewSubject[];
+  /** A separate review set (e.g. "b05"): own frame ids, image folder, browser storage and ratings file name. */
+  set?: string;
+};
 
 /** review-key.json: frame id → what it really is (kept out of the HTML). */
 export type ReviewKey = Record<string, { file: string; subject: string; model: string; style: string; n: number }>;

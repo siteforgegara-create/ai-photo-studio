@@ -35,29 +35,38 @@ export function shuffle<T>(items: T[], seedText: string): T[] {
   return out;
 }
 
-/** Turns frames + selfies into review data and the secret key. */
+/** File names of a review set: the main B0 review, or a separate set such as "b05". */
+export function reviewFiles(set?: string) {
+  const sfx = set ? `-${set}` : "";
+  return { html: `review${sfx}.html`, imgDir: `${REVIEW_IMG_DIR}${sfx}`, key: `review-key${sfx}.json`, ratings: `ratings${sfx}.json` };
+}
+
+/** Turns frames + selfies into review data and the secret key. A `set` gets new frame ids and its own image folder. */
 export function prepareReview(
   run: string,
   subjects: { id: string; type: "real" | "synth"; selfies: string[] }[],
   frames: FrameRef[],
+  set?: string,
 ): { data: ReviewData; key: ReviewKey } {
   const key: ReviewKey = {};
+  const files = reviewFiles(set);
+  const scope = set ? `${run}:${set}` : run;
   const list: ReviewSubject[] = subjects
     .map((s) => {
       const own = frames.filter((f) => f.subject === s.id);
       const reviewFrames = shuffle(
         own.map((f) => {
-          const id = frameId(run, f.file);
+          const id = frameId(scope, f.file);
           key[id] = { file: f.file, subject: f.subject, model: f.model, style: f.style, n: f.n };
           // Copied to review-img/<id>.jpg by bench:review: the original path (…/nb21/…) would reveal the model.
-          return { id, src: `${REVIEW_IMG_DIR}/${id}.jpg` };
+          return { id, src: `${files.imgDir}/${id}.jpg` };
         }),
-        `${run}:${s.id}`,
+        `${scope}:${s.id}`,
       );
       return { id: s.id, type: s.type, selfies: s.selfies, frames: reviewFrames };
     })
     .filter((s) => s.frames.length > 0);
-  return { data: { run, createdAt: new Date().toISOString(), subjects: list }, key };
+  return { data: { run, createdAt: new Date().toISOString(), subjects: list, ...(set ? { set } : {}) }, key };
 }
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -65,6 +74,8 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 /** Nothing in the output names a model: images are review-img/<opaque id>.jpg, labels are positional. */
 export function buildReviewHtml(data: ReviewData): string {
   const total = data.subjects.reduce((n, s) => n + s.frames.length, 0);
+  const title = data.set ? data.set.toUpperCase().replace(/^B(\d)(\d)$/, "B$1.$2") : "B0";
+  const ratingsName = reviewFiles(data.set).ratings;
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
   const sections = data.subjects
     .map(
@@ -98,7 +109,7 @@ export function buildReviewHtml(data: ReviewData): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>B0 — слепая оценка (${esc(data.run)})</title>
+<title>${esc(title)} — слепая оценка (${esc(data.run)})</title>
 <style>
   :root { --bg:#f3f5f8; --surface:#fff; --border:#e4e7ec; --text:#1e2431; --muted:#646e81; --brand:#db2f5c; }
   * { box-sizing: border-box; }
@@ -140,10 +151,10 @@ export function buildReviewHtml(data: ReviewData): string {
 </head>
 <body>
 <header>
-  <h1>B0 · слепая оценка</h1>
+  <h1>${esc(title)} · слепая оценка</h1>
   <span class="progress" id="progress">0 / ${total} оценено</span>
   <label>Оценщик: <input type="text" id="rater" placeholder="имя (необязательно)"></label>
-  <button type="button" id="load">Загрузить ratings.json</button>
+  <button type="button" id="load">Загрузить ${esc(ratingsName)}</button>
   <button type="button" class="primary" id="save">Сохранить оценки</button>
   <input type="file" id="file" accept="application/json" hidden>
 </header>
@@ -154,7 +165,7 @@ export function buildReviewHtml(data: ReviewData): string {
       <li><b>Сходство 1–5</b> — «узнал бы я этого человека?» 1 — чужой человек, 3 — похож, но что-то не так, 5 — точно он/она.</li>
       <li><b>Качество 1–5</b> — артефакты, «пластиковая» кожа, руки, зубы, уши, фон. 5 — не отличить от хорошей фотосессии.</li>
       <li><b>Годный для продажи</b> — отдали бы этот кадр клиенту за деньги.</li>
-      <li>Оценки сохраняются в браузере автоматически. В конце нажмите «Сохранить оценки» и положите скачанный <code>ratings.json</code> в папку прогона рядом с этим файлом.</li>
+      <li>Оценки сохраняются в браузере автоматически. В конце нажмите «Сохранить оценки» и положите скачанный <code>${esc(ratingsName)}</code> в папку прогона рядом с этим файлом.</li>
       <li>Клик по фото — увеличить.</li>
     </ul>
   </div>
@@ -165,7 +176,7 @@ export function buildReviewHtml(data: ReviewData): string {
 <script>
 (function () {
   var data = JSON.parse(document.getElementById("data").textContent);
-  var storeKey = "b0-ratings-" + data.run;
+  var storeKey = "b0-ratings-" + data.run + (data.set ? "-" + data.set : "");
   var ratings = {};
   try { ratings = JSON.parse(localStorage.getItem(storeKey) || "{}"); } catch (e) {}
   var rater = document.getElementById("rater");
@@ -200,11 +211,11 @@ export function buildReviewHtml(data: ReviewData): string {
   });
   rater.addEventListener("input", persist);
   document.getElementById("save").addEventListener("click", function () {
-    var out = { run: data.run, savedAt: new Date().toISOString(), rater: rater.value || undefined, ratings: ratings };
+    var out = { run: data.run, set: data.set, savedAt: new Date().toISOString(), rater: rater.value || undefined, ratings: ratings };
     var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
     var a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = "ratings.json";
+    a.download = ${JSON.stringify(ratingsName)};
     a.click();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
   });

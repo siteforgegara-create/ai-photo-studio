@@ -10,7 +10,7 @@
  *   upscale/…                                     upscale
  * Demo items carry their margin explicitly (the key does not name the model).
  */
-import { ABLATION, ANALYZE, DEFAULT_MARGIN, LORA, MODELS, PERSONAS, UPSCALE } from "../config";
+import { ABLATION, ANALYZE, B05, DEFAULT_MARGIN, LORA, MODELS, PERSONAS, UPSCALE } from "../config";
 
 export function marginForKey(key: string): number {
   const parts = key.split("/");
@@ -21,6 +21,8 @@ export function marginForKey(key: string): number {
   if (kind === "analyze" || kind === "analyze-colors") return ANALYZE.marginFactor;
   if (kind === "lora") return parts[2] === "train" ? LORA.trainMargin : LORA.generateMargin;
   if (kind === ABLATION.key) return MODELS[ABLATION.baseModel].marginFactor;
+  const variant = kind ? (B05.variants as Record<string, { base: keyof typeof MODELS }>)[kind] : undefined;
+  if (variant) return MODELS[variant.base].marginFactor;
   const model = kind ? (MODELS as Record<string, { marginFactor: number }>)[kind] : undefined;
   return model?.marginFactor ?? DEFAULT_MARGIN;
 }

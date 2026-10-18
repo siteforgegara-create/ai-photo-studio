@@ -33,6 +33,8 @@ export type CommonArgs = {
   ablationSubjects?: number;
   /** bench:reconcile — actual total from the fal.ai Usage page. */
   actual?: number;
+  /** bench:review / bench:report — review set, e.g. "b05" (B0.5 mini-test). */
+  set?: string;
 };
 
 export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
@@ -55,6 +57,7 @@ export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
       "no-attrs": { type: "boolean", default: false },
       "ablation-subjects": { type: "string" },
       actual: { type: "string" },
+      set: { type: "string" },
     },
   });
   const list = (v?: string) => (v ? v.split(",").map((s) => s.trim()).filter(Boolean) : undefined);
@@ -74,6 +77,7 @@ export function parseCommonArgs(argv = process.argv.slice(2)): CommonArgs {
     noAttrs: Boolean(values["no-attrs"]),
     ablationSubjects: values["ablation-subjects"] ? Math.max(0, Math.min(4, Number(values["ablation-subjects"]) || 0)) : undefined,
     actual: values.actual !== undefined ? Number(values.actual.replace(/[$,\s]/g, "")) : undefined,
+    set: values.set ? values.set.toLowerCase() : undefined,
   };
 }
 

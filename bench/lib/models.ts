@@ -51,6 +51,20 @@ export function buildFrameInput(model: BenchModel, prompt: string, refUrls: stri
   }
 }
 
+/**
+ * Edit of an existing frame (B0.5 flux3-nbfix): the frame first, then the
+ * selfies as references — same output settings as a Nano Banana frame.
+ */
+export function buildEditInput(model: BenchModel, prompt: string, inputUrl: string, refUrls: string[], seed: number): Record<string, unknown> {
+  const refs = [inputUrl, ...refUrls.slice(0, Math.min(8, model.maxRefs - 1))];
+  return { prompt, image_urls: refs, num_images: 1, seed, aspect_ratio: "4:5", resolution: "1K", output_format: "jpeg" };
+}
+
+/** Price of an edit: the input frame counts as one more input image. */
+export function editCost(model: BenchModel, inputSize: Size, refSizes: Size[]): number {
+  return callCost(model.pricing, { output: outputSize(model), inputs: [inputSize, ...refSizes.slice(0, Math.min(8, model.maxRefs - 1))] });
+}
+
 export function buildLoraFrameInput(prompt: string, loraUrl: string, seed: number): Record<string, unknown> {
   return { prompt, loras: [{ path: loraUrl, scale: 1 }], image_size: OUTPUT, num_images: 1, seed, output_format: "jpeg" };
 }

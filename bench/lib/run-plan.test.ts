@@ -91,3 +91,46 @@ describe("finalAttributes — the prompt line is built from attributes.json at r
     expect(attributesLine(finalAttributes(file))).toBe("Subject details (preserve exactly): green eyes, auburn hair, freckles. Keep the exact skin tone and hair color from the photos. Preserve apparent age exactly.");
   });
 });
+
+describe("B0.5 variants", () => {
+  const reals = ["real-01", "real-02"].map(subj);
+  const rsizes = new Map(reals.map((s) => [s.id, Array.from({ length: 6 }, () => PLANNED_SELFIE_SIZE)]));
+  const rattrs = new Map(reals.map((s) => [s.id, voteAttributes(s.id, Array.from({ length: 3 }, () => ({ eyeColor: "brown" })))]));
+  const base = { runId: RUN_ID, subjects: reals, models: [], selfieSizes: rsizes, attrs: rattrs, noAttrs: false, ablationSubjects: [], log: [] as CallLog[], variantSubjects: reals };
+
+  it("8 frames per variant; strict / premium = usual prompt + attribute line + suffix", () => {
+    const p = buildRunPlan({ ...base, variants: ["nb21-strict", "flux3-premium"] });
+    expect(p.frames).toEqual([]);
+    expect(p.variants.filter((f) => f.dir === "nb21-strict")).toHaveLength(8);
+    expect(p.variants.filter((f) => f.dir === "flux3-premium")).toHaveLength(8);
+    const strict = p.variants.find((f) => f.dir === "nb21-strict")!;
+    expect(strict.prompt).toContain("Subject details (preserve exactly): brown eyes.");
+    expect(strict.prompt!.endsWith("Keep the natural neutral expression unless the style says otherwise.")).toBe(true);
+    expect(strict.model).toBe(MODELS.nb21);
+    expect(strict.costUsd).toBe(0.0616);
+    const premium = p.variants.find((f) => f.dir === "flux3-premium")!;
+    expect(premium.prompt!.endsWith("shallow depth of field, shot on 85mm.")).toBe(true);
+    expect(premium.costUsd).toBe(0.096);
+  });
+
+  it("flux3-nbfix edits the existing flux3 frame — blocked when it is missing, never generated", () => {
+    const p = buildRunPlan({ ...base, variants: ["flux3-nbfix"] });
+    expect(p.variants).toEqual([]);
+    expect(p.blocked).toHaveLength(8);
+    const f = framePath(RUN_ID, "real-01", "flux3", "corporate-gray", 1);
+    mkdirSync(path.dirname(f), { recursive: true });
+    writeFileSync(f, "jpg");
+    const p2 = buildRunPlan({ ...base, variants: ["flux3-nbfix"] });
+    expect(p2.variants).toHaveLength(1);
+    expect(p2.blocked).toHaveLength(7);
+    expect(p2.variants[0]).toMatchObject({ dir: "flux3-nbfix", inputFile: f, costUsd: 0.0636 }); // 7 inputs (frame + 6 selfies) × $0.002 + $0.0396 + $0.01
+    expect(p2.variants[0]!.prompt).toMatch(/^Improve only lighting/);
+  });
+
+  it("margins follow the base model", async () => {
+    const { marginForKey } = await import("./margins");
+    expect(marginForKey("real-01/nb21-strict/corporate-gray-1")).toBe(1.0);
+    expect(marginForKey("real-01/flux3-premium/corporate-gray-1")).toBe(1.0);
+    expect(marginForKey("real-01/flux3-nbfix/corporate-gray-1")).toBe(1.0);
+  });
+});

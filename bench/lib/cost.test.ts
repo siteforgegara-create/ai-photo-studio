@@ -64,8 +64,9 @@ describe("plan and ceiling", () => {
     ]);
   });
 
-  it("cuts calls that would cross the $17 ceiling", () => {
-    const { fit, cut } = fitUnderCeiling(items, emptyLedger(), SPEND_CEILING_USD);
+  it("the B0 ceiling is $19 (owner, B0.5) and cuts calls that would cross it", () => {
+    expect(SPEND_CEILING_USD).toBe(19);
+    const { fit, cut } = fitUnderCeiling(items, emptyLedger(), 17);
     expect(fit.map((i) => i.key)).toEqual(["a", "b", "c"]);
     expect(cut.map((i) => i.key)).toEqual(["d"]);
   });

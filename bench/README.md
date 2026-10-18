@@ -70,6 +70,26 @@ bench/subjects/
 
 Абляция на 4 участника дала бы $17.12 — на $0.12 выше потолка, поэтому по правилу остаётся 2. Размер абляции `bench:run` выбирает **в момент запуска** по свежему прогнозу. Если после `bench:analyze` и `bench:reconcile` факт окажется ниже плана (у анализа запас ×1.5), абляция сама вернётся к 4 участникам. Задать вручную: `--ablation-subjects=4|2`.
 
+### B0.5 — мини-тест на real-01 и real-02 (потолок $19)
+
+```
+npm run bench:run -- --only=nb21-strict,flux3-premium,flux3-nbfix --subjects=real-01,real-02 --dry-run
+npm run bench:run -- --only=nb21-strict,flux3-premium,flux3-nbfix --subjects=real-01,real-02
+npm run bench:score
+npm run bench:review -- --set=b05      # review-b05.html: 5 вариантов вслепую, новые id
+# оцените, «Сохранить оценки» → ratings-b05.json в папку прогона (ratings.json B0 не трогается)
+npm run bench:report                   # раздел «6в. B0.5»
+```
+
+| Вариант | Что это | Кадров | ≈ Цена |
+|---|---|---|---|
+| `nb21-strict` | Nano Banana 2.1 + запрет менять структуру лица | 8 | $0.49 |
+| `flux3-premium` | FLUX 3 + описание премиальной съёмки | 8 | $0.77 |
+| `flux3-nbfix` | готовый кадр FLUX 3 → правка Nano Banana 2.1 (свет, цвет, одежда, фон; лицо не трогать) | 8 | $0.51 (+ исходный кадр FLUX 3 в $/кадр отчёта) |
+| `nb21`, `flux3` | якоря — кадры B0, не перегенерируются | 8 + 8 | $0 |
+
+Итого ≈ **$1.77** (запас 1.0 — модели подтверждены счётом). `flux3-nbfix` для кадра, у которого нет исходного FLUX 3, не планируется — dry-run это покажет.
+
 ### Прочее
 
 - **Запас и сверка.** У каждой модели свой запас (`marginFactor` в `config.ts`: 1.0 — подтверждено счётом fal.ai; nbpro, seedream, LoRA — 1.1; апскейл — 1.2; анализ — 1.5). Потолок считает по max(Σ насчитано × запас, факт fal.ai + Σ новые траты × запас). После каждого платного шага сверяйте Usage командой `bench:reconcile`.
@@ -86,7 +106,8 @@ bench/subjects/
 | `--dry-run` | все | только план и цены, без вызовов и без ключа |
 | `--yes` | платные | без вопроса y/N |
 | `--redo=synth-02,synth-05` | personas | перегенерировать этих персонажей (старые файлы и их кадры удаляются) |
-| `--only=nb21,nbpro,seedream,flux3,lora,nb21-noattr` | run | какие модели и группы |
+| `--only=nb21,nbpro,seedream,flux3,lora,nb21-noattr` | run | какие модели и группы; B0.5: `nb21-strict,flux3-premium,flux3-nbfix` (только по `--only`) |
+| `--set=b05` | review | отдельная слепая оценка B0.5 → `review-b05.html`, `ratings-b05.json` |
 | `--no-attrs` | run | без строки признаков в промптах и без абляции |
 | `--ablation-subjects=4` | run, forecast | размер абляции вручную (по умолчанию решает прогноз: 4 или 2) |
 | `--subjects=real-01,synth-02` | personas, analyze, run, score, review | какие участники |

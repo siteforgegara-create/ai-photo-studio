@@ -15,6 +15,8 @@ export type ModelStats = {
   manualSimilarity: number | null;
   manualQuality: number | null;
   sellableShare: number | null;
+  /** Frames marked "sellable" in the blind review. */
+  sellableCount: number;
   avgSeconds: number | null;
   costPerFrame: number | null;
   /** = cost per frame / sellable share. */
@@ -49,6 +51,7 @@ export function statsFor(model: string, rows: Row[]): ModelStats {
     manualSimilarity: mean(rated.map((r) => r.rating!.similarity!)),
     manualQuality: mean(rated.map((r) => r.rating!.quality!)),
     sellableShare: sellable,
+    sellableCount: rated.filter((r) => r.rating!.sellable).length,
     avgSeconds: mean(rs.map((r) => r.ms).filter((v): v is number => typeof v === "number").map((ms) => ms / 1000)),
     costPerFrame,
     costPerSellable: costPerFrame !== null && sellable ? costPerFrame / sellable : null,
@@ -81,6 +84,29 @@ export function thresholdTable(rows: Row[], candidates?: number[]): ThresholdRow
 /** Lowest threshold that removes ≥ `target` of the frames humans rated ≤ 2. */
 export function recommendThreshold(rows: Row[], target = 0.9): ThresholdRow | null {
   return thresholdTable(rows).find((t) => t.badRemoved >= target) ?? null;
+}
+
+/**
+ * Max auto-likeness threshold "against obvious rejects": the highest value that
+ * still keeps ≥ `keep` (95%) of the frames humans rated likeness ≥ 4. It only
+ * cuts what is clearly worse than every good frame. null below `minGood` good frames.
+ */
+export function safeThreshold(rows: Row[], keep = 0.95, minGood = 5): (ThresholdRow & { goodFrames: number }) | null {
+  const rated = rows.filter((r) => r.rating?.similarity && r.similarity !== null);
+  const good = rated.filter((r) => r.rating!.similarity! >= 4).map((r) => r.similarity!).sort((a, b) => a - b);
+  if (good.length < minGood) return null;
+  const drop = Math.floor((1 - keep) * good.length + 1e-9);
+  const threshold = Math.floor(good[drop]! * 1000) / 1000; // floored, so the frame at the cut stays kept
+  const row = thresholdTable(rows, [threshold])[0]!;
+  return { ...row, goodFrames: good.length };
+}
+
+/** Minimum sellable frames before a model can be recommended. */
+export const MIN_SELLABLE = 3;
+
+/** Models that may be recommended: at least MIN_SELLABLE sellable frames in the blind review. */
+export function eligibleForShoot(stats: ModelStats[], min = MIN_SELLABLE): ModelStats[] {
+  return stats.filter((s) => s.sellableCount >= min);
 }
 
 /** Ranking for the shoot model: share of sellable frames on real people first, then cost per sellable frame. */

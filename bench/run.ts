@@ -14,7 +14,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { zipSync } from "fflate";
-import { ABLATION, LORA, MAX_CONCURRENCY, MODELS, OUTPUT, type BenchModel } from "./config";
+import { ABLATION, B05, LORA, MAX_CONCURRENCY, MODELS, OUTPUT, VARIANT_KEYS, type BenchModel, type VariantKey } from "./config";
 import { attributesLine, type PromptAttributes } from "./lib/attributes";
 import { buildB0Forecast } from "./lib/b0-forecast";
 import { formatUsd, type PlanItem, type Size } from "./lib/cost";
@@ -25,7 +25,7 @@ import { upload } from "./lib/fal";
 import { downloadImage, normalizeSelfie } from "./lib/images";
 import { Spend } from "./lib/ledger";
 import { appendLog, readLog } from "./lib/log";
-import { buildFrameInput, buildLoraFrameInput, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse, type LoraTrainResponse } from "./lib/models";
+import { buildEditInput, buildFrameInput, buildLoraFrameInput, getModel, PLANNED_SELFIE_SIZE, type ImagesResponse, type LoraTrainResponse } from "./lib/models";
 import { resolveRunId, runDir } from "./lib/paths";
 import { finalAttributes, readAttributes } from "./lib/plans";
 import { runPool } from "./lib/pool";
@@ -38,7 +38,10 @@ const runId = resolveRunId(args.run);
 const RUN = runDir(runId);
 const LOG = path.join(RUN, "log.jsonl");
 
-const models: BenchModel[] = (args.only?.filter((k) => k !== "lora" && k !== ABLATION.key) ?? Object.keys(MODELS)).map(getModel);
+const isVariant = (k: string): k is VariantKey => (VARIANT_KEYS as string[]).includes(k);
+const models: BenchModel[] = (args.only?.filter((k) => k !== "lora" && k !== ABLATION.key && !isVariant(k)) ?? Object.keys(MODELS)).map(getModel);
+// B0.5 variants run only when named in --only (never by a plain bench:run).
+const variantKeys: VariantKey[] = (args.only ?? []).filter(isVariant);
 const withLora = !args.noLora && (!args.only || args.only.includes("lora"));
 const withAblation = !args.noAttrs && (!args.only || args.only.includes(ABLATION.key));
 const subjects = subjectsForPlan(args.subjects, args.dryRun);
@@ -108,16 +111,24 @@ const plan = buildRunPlan({
   attrs,
   noAttrs: args.noAttrs,
   ablationSubjects: subjects.filter((s) => ablationIds.includes(s.id)),
+  variants: variantKeys,
+  variantSubjects: subjects.filter((s) => B05.subjects.includes(s.id)),
   log: readLog(LOG),
 });
-const frames: FrameItem[] = [...plan.frames, ...plan.ablation];
+const frames: FrameItem[] = [...plan.frames, ...plan.ablation, ...plan.variants];
+if (variantKeys.length) {
+  const missing = B05.subjects.filter((id) => !subjects.some((s) => s.id === id));
+  if (missing.length) console.log(`⚠ B0.5: ${missing.join(", ")} not among the subjects — variants only for ${subjects.filter((s) => B05.subjects.includes(s.id)).map((s) => s.id).join(", ") || "nobody"}.`);
+  for (const b of plan.blocked) console.log(`⚠ ${b.key}: not planned — ${b.reason} (run flux3 first; it is never regenerated here).`);
+}
 const loraTrain = plan.loraTrain;
 const loraDir = loraSubject ? path.join(RUN, loraSubject.id, "lora") : "";
 const loraInfoFile = loraSubject ? path.join(loraDir, "training.json") : "";
 
 console.log(`Run: bench/runs/${runId}   Subjects: ${subjects.map((s) => s.id).join(", ")}${subjects.some((s) => s.planned) ? "  (PLANNED — no photos yet)" : ""}`);
-console.log(`Models: ${models.map((m) => `${m.key} → ${m.endpoint} (${m.source.note})`).join("\n        ")}`);
+if (models.length) console.log(`Models: ${models.map((m) => `${m.key} → ${m.endpoint} (${m.source.note})`).join("\n        ")}`);
 if (loraSubject) console.log(`        lora → ${LORA.trainEndpoint} + ${LORA.generateEndpoint} on ${loraSubject.id}`);
+for (const k of variantKeys) console.log(`B0.5:   ${k} → ${MODELS[B05.variants[k].base].endpoint}${"input" in B05.variants[k] ? ` editing the existing ${B05.variants[k].input} frames` : " + B0.5 prompt suffix"} on ${B05.subjects.join(", ")}`);
 if (plan.ablation.length) console.log(`        ${ABLATION.key} → ${MODELS[ABLATION.baseModel].endpoint} without the attribute line, on ${ablationIds.join(", ")}${plan.ablation.some((f) => f.adopt) ? ` (${plan.ablation.filter((f) => f.adopt).length} smoke-test frames reused — identical request)` : ""}`);
 console.log(`Prompts: ${args.noAttrs ? "WITHOUT the attribute line (--no-attrs)" : "with the voted attributes of each subject"}.`);
 for (const s of subjects) if (attrs.get(s.id)) console.log(`  ${s.id}: ${attributesLine(attrs.get(s.id)!)}`);
@@ -206,7 +217,7 @@ for (const subject of subjects) {
 
   const jobs = todo
     .filter((f) => (f.model !== "lora" || lora) && f.prompt)
-    .map((f) => () => {
+    .map((f) => async () => {
       const seed = f.seed;
       const isLora = f.model === "lora";
       const model = f.model as BenchModel;
@@ -215,7 +226,11 @@ for (const subject of subjects) {
           key: f.key,
           kind: "frame",
           endpoint: isLora ? LORA.generateEndpoint : model.endpoint,
-          input: isLora ? buildLoraFrameInput(f.prompt!, lora!, seed) : buildFrameInput(model, f.prompt!, refUrls, seed),
+          input: isLora
+            ? buildLoraFrameInput(f.prompt!, lora!, seed)
+            : f.inputFile
+              ? buildEditInput(model, f.prompt!, await upload(readFileSync(f.inputFile), "image/jpeg", `${f.subject.id}-${path.basename(f.inputFile)}`), refUrls, seed)
+              : buildFrameInput(model, f.prompt!, refUrls, seed),
           costUsd: f.costUsd,
           meta: { subject: f.subject.id, model: f.dir, style: f.style, n: f.n, promptHash: f.promptHash ?? undefined },
           save: async (d) => {

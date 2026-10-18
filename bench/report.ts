@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { ABLATION, ANALYZE, FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
+import { ABLATION, ANALYZE, B05, VARIANT_KEYS, FAL_RETENTION_NOTE, LORA, MODELS, PRICES_CHECKED, SPEND_CEILING_USD } from "./config";
 import { accuracyTable, attributesLine, type AccuracyRow, type AttributeTruth } from "./lib/attributes";
 import { finalAttributes, readAttributes } from "./lib/plans";
 import { effectiveSpent, formatUsd } from "./lib/cost";
@@ -16,7 +16,8 @@ import { fail, parseCommonArgs } from "./lib/cli";
 import { loadLedger } from "./lib/ledger";
 import { readLog } from "./lib/log";
 import { resolveRunId, runDir } from "./lib/paths";
-import { allStats, joinRows, percentile, pickForEdits, rankForShoot, recommendThreshold, thresholdTable, type ModelStats, type Row } from "./lib/report-calc";
+import { allStats, eligibleForShoot, joinRows, MIN_SELLABLE, percentile, pickForEdits, rankForShoot, safeThreshold, statsFor, thresholdTable, type ModelStats, type Row } from "./lib/report-calc";
+import { reviewFiles } from "./lib/review-html";
 import { readSubjectsMeta, truthFor } from "./lib/subjects";
 import type { RatingsFile, ReviewKey, ScoresFile } from "./lib/types";
 
@@ -36,10 +37,12 @@ const keyFile = path.join(RUN, "review-key.json");
 const ratings = existsSync(ratingsFile) ? (JSON.parse(readFileSync(ratingsFile, "utf8")) as RatingsFile) : null;
 const key = existsSync(keyFile) ? (JSON.parse(readFileSync(keyFile, "utf8")) as ReviewKey) : null;
 const meta = new Map(readSubjectsMeta().map((m) => [m.id, m]));
-const rows = joinRows(scores.frames, ratings, key, meta);
+// B0 tables: without the B0.5 variants (they have their own section and ratings file).
+const rows = joinRows(scores.frames.filter((f) => !(VARIANT_KEYS as string[]).includes(f.model)), ratings, key, meta);
 const ratedCount = rows.filter((r) => r.rating?.similarity).length;
 
-const label = (m: string) => (m === "lora" ? LORA.label : m === ABLATION.key ? ABLATION.label : (MODELS as Record<string, { label: string }>)[m]?.label ?? m);
+const label = (m: string) =>
+  m === "lora" ? LORA.label : m === ABLATION.key ? ABLATION.label : ((B05.variants as Record<string, { label: string }>)[m]?.label ?? (MODELS as Record<string, { label: string }>)[m]?.label ?? m);
 const pct = (v: number | null) => (v === null ? "—" : `${Math.round(v * 100)}%`);
 const num = (v: number | null, d = 2) => (v === null ? "—" : v.toFixed(d));
 const usd = (v: number | null) => (v === null ? "—" : formatUsd(v));
@@ -85,7 +88,18 @@ const real = allStats(rows.filter((r) => r.subjectType === "real"));
 const synth = allStats(rows.filter((r) => r.subjectType === "synth"));
 // The ablation group is a control, not a candidate: it never wins the recommendation.
 const candidates = (list: ModelStats[]) => list.filter((s) => s.model !== ABLATION.key);
-const ranking = rankForShoot(candidates(real.some((s) => s.frames) ? real : stats));
+const shootPool = candidates(real.some((s) => s.frames) ? real : stats);
+// A model is recommended only with ≥ MIN_SELLABLE sellable frames; otherwise "not enough data".
+const ranking = rankForShoot(eligibleForShoot(shootPool));
+function shootRecommendation(pool: ModelStats[], ranked: ModelStats[], rated: number): string {
+  if (!rated) return "**недостаточно данных** — нет ручных оценок.";
+  if (!ranked.length) {
+    const best = [...pool].sort((x, y) => y.sellableCount - x.sellableCount)[0];
+    return `**недостаточно данных** — ни у одной модели нет ${MIN_SELLABLE} годных кадров${best ? ` (больше всего у ${label(best.model)}: ${best.sellableCount})` : ""}. Модель не выбирается.`;
+  }
+  const [first, second] = ranked;
+  return `${label(first!.model)} — годных ${first!.sellableCount} (${pct(first!.sellableShare)}), ${usd(first!.costPerSellable)} за годный кадр${second ? `; второе место — ${label(second.model)} (${second.sellableCount}, ${pct(second.sellableShare)}, ${usd(second.costPerSellable)})` : ""}.`;
+}
 const edits = pickForEdits(candidates(real.some((s) => s.rated) ? real : stats));
 
 // Attributes (bench:analyze) and their accuracy on the personas.
@@ -157,8 +171,45 @@ ${line(b)}
 
 ${a && b && a.manualSimilarity !== null && b.manualSimilarity !== null ? `Строка признаков ${a.manualSimilarity > b.manualSimilarity ? "**улучшила**" : a.manualSimilarity < b.manualSimilarity ? "**ухудшила**" : "не изменила"} ручное сходство: ${num(a.manualSimilarity)} против ${num(b.manualSimilarity)}. Выборка маленькая (${noattr.length} кадров) — это ориентир, не доказательство.` : "_Нужны ручные оценки обеих групп._"}`;
 }
-const threshold = recommendThreshold(rows);
-const thresholds = thresholdTable(rows, [0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7]);
+// ─── B0.5: 5 variants on real-01 / real-02, own blind review (ratings-b05.json) ───
+const B05_FILES = reviewFiles("b05");
+const readJson = <T,>(f: string): T | null => (existsSync(path.join(RUN, f)) ? (JSON.parse(readFileSync(path.join(RUN, f), "utf8")) as T) : null);
+const b05Key = readJson<ReviewKey>(B05_FILES.key);
+const b05Ratings = readJson<RatingsFile>(B05_FILES.ratings);
+const B05_MODELS: string[] = [...B05.anchors, ...VARIANT_KEYS];
+const b05Frames = scores.frames.filter((f) => B05.subjects.includes(f.subject) && B05_MODELS.includes(f.model));
+// flux3-nbfix edits a flux3 frame: its real cost per frame includes that frame.
+const flux3Usd = new Map(b05Frames.filter((f) => f.model === "flux3").map((f) => [`${f.subject}/${f.style}-${f.n}`, f.usd ?? 0]));
+const b05Rows = joinRows(
+  b05Frames.map((f) => (f.model === "flux3-nbfix" && typeof f.usd === "number" ? { ...f, usd: f.usd + (flux3Usd.get(`${f.subject}/${f.style}-${f.n}`) ?? 0) } : f)),
+  b05Ratings,
+  b05Key,
+  meta,
+);
+const b05Stats = B05_MODELS.map((m) => statsFor(m, b05Rows)).filter((s) => s.frames);
+const b05Rated = b05Rows.filter((r) => r.rating?.similarity && r.rating?.quality).length;
+const b05Ranking = rankForShoot(eligibleForShoot(b05Stats));
+function b05Section(): string {
+  if (!b05Frames.some((f) => (VARIANT_KEYS as string[]).includes(f.model))) return "_B0.5 ещё не запускался (npm run bench:run -- --only=nb21-strict,flux3-premium,flux3-nbfix --subjects=real-01,real-02)._";
+  const head = "| Вариант | Кадров | Оценено | Сходство 1–5 | Качество 1–5 | **Годных** | Автосходство | $/кадр | **$/годный** |\n|---|---|---|---|---|---|---|---|---|";
+  const body = b05Stats
+    .map((s) => `| ${label(s.model)}${(B05.anchors as readonly string[]).includes(s.model) ? " (якорь, кадры B0)" : ""} | ${s.frames} | ${s.rated} | ${num(s.manualSimilarity)} | ${num(s.manualQuality)} | **${s.sellableCount}${s.rated ? ` (${pct(s.sellableShare)})` : ""}** | ${num(s.autoSimilarity, 3)} | ${usd(s.costPerFrame)} | **${usd(s.costPerSellable)}** |`)
+    .join("\n");
+  return `Участники: ${B05.subjects.join(", ")}. Все кадры оценены заново в отдельной слепой оценке (\`${B05_FILES.html}\` → \`${B05_FILES.ratings}\`); кадры nb21 и flux3 — те же, что в B0 (якоря, не перегенерировались), под новыми id. Оценок B0.5: ${b05Rated}${b05Ratings ? "" : " — **ratings-b05.json ещё нет**"}.
+
+${head}
+${body}
+
+- $/кадр у «FLUX 3 → Nano Banana 2.1 fix» включает исходный кадр FLUX 3 (двухшаговый вариант).
+- **Вывод B0.5:** ${shootRecommendation(b05Stats, b05Ranking, b05Rated)}
+- Выборка — 8 кадров на вариант (2 человека × 2 стиля × 2 кадра): это проверка направления, а не статистика.`;
+}
+
+// Threshold against obvious rejects: the highest that keeps ≥ 95% of the frames rated likeness ≥ 4.
+const safe = safeThreshold(rows);
+const gridFrom = Math.floor(((percentile(scores.baseline.impostor, 50) ?? 0.5) * 50)) / 50;
+const grid = Array.from({ length: Math.max(0, Math.round((0.98 - gridFrom) / 0.02)) + 1 }, (_, i) => Math.round((gridFrom + i * 0.02) * 100) / 100);
+const thresholds = thresholdTable(rows, [...new Set([...grid, ...(safe ? [safe.threshold] : [])])].sort((x, y) => x - y));
 const ledger = loadLedger();
 const log = readLog(path.join(RUN, "log.jsonl"));
 const loraTrain = log.find((l) => l.kind === "lora-train" && l.status === "ok");
@@ -207,13 +258,13 @@ ${groupTable("skinTone")}
 |---|---|---|---|
 ${thresholds.map((t) => `| ${t.threshold.toFixed(2)} | ${pct(t.badRemoved)} | ${pct(t.goodKept)} | ${pct(t.framesKept)} |`).join("\n")}
 
-${threshold ? `**Предлагаемый порог: ${threshold.threshold.toFixed(2)}** — отсеивает ${pct(threshold.badRemoved)} кадров, которым человек поставил ≤ 2, и сохраняет ${pct(threshold.goodKept)} кадров с оценкой ≥ 4.` : ratedCount ? "_Ни один порог не отсеивает 90% кадров с оценкой ≤ 2 — на этих данных автометрика разделяет их недостаточно._" : `_Нужны ручные оценки. До них отправная точка — p90 «разных людей» (${num(percentile(impostor, 90), 3)}): ниже этого кадр похож на человека не больше, чем незнакомец._`}
+${safe ? `**Порог против явного брака: ${safe.threshold.toFixed(3)}** — максимальный, при котором сохраняется ≥ 95% кадров с ручным сходством ≥ 4 (сохраняется ${pct(safe.goodKept)} из ${safe.goodFrames}). При нём отсеивается ${pct(safe.badRemoved)} кадров с оценкой ≤ 2 и остаётся ${pct(safe.framesKept)} всех оценённых кадров. Это фильтр только для явного брака: решает ручная оценка, а не автометрика.` : ratedCount ? "_Меньше 5 кадров с ручным сходством ≥ 4 — порог против явного брака не считается (недостаточно данных)._" : `_Нужны ручные оценки. До них отправная точка — p90 «разных людей» (${num(percentile(impostor, 90), 3)}): ниже этого кадр похож на человека не больше, чем незнакомец._`}
 
 ## 6. Рекомендация (по данным)
 
-- **Модель для съёмки:** ${ranking[0] ? `${label(ranking[0].model)} — годных ${pct(ranking[0].sellableShare)}, ${usd(ranking[0].costPerSellable)} за годный кадр` : "—"}${ranking[1] ? `; второе место — ${label(ranking[1].model)} (${pct(ranking[1].sellableShare)}, ${usd(ranking[1].costPerSellable)})` : ""}.
+- **Модель для съёмки:** ${shootRecommendation(shootPool, ranking, ratedCount)}
 - **Модель для правок:** ${edits ? `${label(edits.model)} — самая дешёвая из моделей, отстающих от лучшей по сходству не более чем на 0.3 (${usd(edits.costPerFrame)} за кадр). Это эвристика: правки напрямую не измерялись, проверить в bench:demo.` : "—"}
-- **Порог фильтра:** ${threshold ? threshold.threshold.toFixed(2) : "см. §5"}.
+- **Порог фильтра (против явного брака):** ${safe ? `${safe.threshold.toFixed(3)} — сохраняет ≥ 95% кадров с оценкой ≥ 4` : "недостаточно данных (см. §5)"}.
 ${stats.find((s) => s.model === "lora") ? `- **Контроль LoRA** (${loraTrain ? `обучение ${usd(loraTrain.usd)}, ${((loraTrain.ms ?? 0) / 60000).toFixed(1)} мин` : "обучение не запускалось"}): ${(() => {
   const l = stats.find((s) => s.model === "lora")!;
   return `годных ${pct(l.sellableShare)}, сходство ${num(l.manualSimilarity)} / авто ${num(l.autoSimilarity, 3)} — сравните с zero-shot моделями на том же человеке в галереях ниже.`;
@@ -226,6 +277,10 @@ ${accuracySection()}
 ## 6б. Абляция: строка признаков в промпте
 
 ${ablationSection()}
+
+## 6в. B0.5 — мини-тест на реальных людях
+
+${b05Section()}
 
 ## 7. Мини-тест апскейла
 

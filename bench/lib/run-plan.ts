@@ -11,14 +11,14 @@
  */
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { ABLATION, BENCH_STYLES, FRAMES_PER_STYLE, LORA, MODELS, type BenchModel } from "../config";
+import { ABLATION, B05, BENCH_STYLES, FRAMES_PER_STYLE, LORA, MODELS, type BenchModel, type VariantKey } from "../config";
 import { generationPrompt } from "../prompts";
 import { attributesLine, type PromptAttributes } from "./attributes";
 import type { PlanItem, Size } from "./cost";
 import type { CallLog } from "./log";
-import { frameCost, loraFrameCost, loraTrainCost, seedFor } from "./models";
+import { editCost, frameCost, loraFrameCost, loraTrainCost, seedFor } from "./models";
 import { framePath, runDir } from "./paths";
-import { sha1 } from "./plans";
+import { fileSha1, sha1 } from "./plans";
 import type { Subject } from "./subjects";
 
 export type FrameItem = PlanItem & {
@@ -36,9 +36,14 @@ export type FrameItem = PlanItem & {
   promptHash: string | null;
   /** Reuse this earlier frame instead of calling (identical request). */
   adopt?: { file: string; entry: CallLog };
+  /** B0.5 flux3-nbfix: the existing frame this call edits. */
+  inputFile?: string;
 };
 
-export type RunPlan = { frames: FrameItem[]; ablation: FrameItem[]; loraTrain: PlanItem | null; loraSubject?: Subject };
+/** A B0.5 variant frame that cannot be planned yet (its input frame is missing). */
+export type BlockedItem = { key: string; reason: string };
+
+export type RunPlan = { frames: FrameItem[]; ablation: FrameItem[]; variants: FrameItem[]; blocked: BlockedItem[]; loraTrain: PlanItem | null; loraSubject?: Subject };
 
 export type RunPlanInput = {
   runId: string;
@@ -50,6 +55,9 @@ export type RunPlanInput = {
   attrs: Map<string, PromptAttributes | null>;
   noAttrs: boolean;
   ablationSubjects: Subject[];
+  /** B0.5 variants to plan (only when named in --only) and their subjects (real-01, real-02). */
+  variants?: VariantKey[];
+  variantSubjects?: Subject[];
   log: CallLog[];
 };
 
@@ -159,5 +167,41 @@ export function buildRunPlan(input: RunPlanInput): RunPlan {
     }
   }
 
-  return { frames, ablation, loraTrain, loraSubject: input.loraSubject };
+  // ─── B0.5 variants (real-01, real-02) ─────────────────────────────────────
+  const variants: FrameItem[] = [];
+  const blocked: BlockedItem[] = [];
+  for (const key of input.variants ?? []) {
+    const v = B05.variants[key];
+    const base = MODELS[v.base];
+    for (const subject of input.variantSubjects ?? []) {
+      BENCH_STYLES.forEach((style, si) => {
+        for (let n = 1; n <= FRAMES_PER_STYLE; n++) {
+          const label = `${subject.id} · ${v.label} · ${style} #${n}`;
+          const it = item(subject, key, base, style, si, n, !input.noAttrs, v.label, label);
+          if ("input" in v) {
+            // Two-step: edit the existing frame of the input model — never generated here.
+            const inputFile = framePath(input.runId, subject.id, v.input, style, n);
+            if (!subject.planned && !existsSync(inputFile)) {
+              blocked.push({ key: it.key, reason: `no ${v.input} frame ${subject.id}/${v.input}/${style}-${n}.jpg` });
+              continue;
+            }
+            const prompt = v.prompt;
+            const hash = promptHash(base.endpoint, `${prompt}|input:${existsSync(inputFile) ? fileSha1(inputFile) : "planned"}`, it.seed);
+            it.prompt = prompt;
+            it.promptHash = hash;
+            it.inputFile = inputFile;
+            it.costUsd = editCost(base, { width: 880, height: 1100 }, input.selfieSizes.get(subject.id) ?? []);
+            it.cached = existsSync(it.file) && ok.get(it.key)?.promptHash === hash;
+          } else if (it.prompt !== null) {
+            it.prompt = `${it.prompt} ${v.suffix}`;
+            it.promptHash = promptHash(base.endpoint, it.prompt, base.seed ? it.seed : null);
+            it.cached = existsSync(it.file) && ok.get(it.key)?.promptHash === it.promptHash;
+          }
+          variants.push(it);
+        }
+      });
+    }
+  }
+
+  return { frames, ablation, variants, blocked, loraTrain, loraSubject: input.loraSubject };
 }

@@ -9,8 +9,12 @@
 
 export const PRICES_CHECKED = "2026-10-18";
 
-/** Hard ceiling for everything B0 does (docs/07: $17 of the $20 balance). */
-export const SPEND_CEILING_USD = 17;
+/**
+ * Hard ceiling for everything B0 (incl. the B0.5 mini-test) does. Was $17;
+ * raised to $19 by the owner for B0.5 (2026-10-18; fal.ai balance $20).
+ * The demo has its own guard (DEMO.ceilingUsd).
+ */
+export const SPEND_CEILING_USD = 19;
 
 /**
  * Calibration (fal.ai Usage by model, 2026-10-18): every price has its own
@@ -243,6 +247,44 @@ export const ABLATION = {
 };
 
 /**
+ * B0.5 mini-test (owner, 2026-10-18): on real people FLUX 3 won likeness and
+ * Nano Banana 2.1 won quality, but almost no frame was sellable. Three
+ * variants on real-01 and real-02 only, 2 styles × 2 frames = 8 frames each,
+ * reviewed blind together with the existing nb21 and flux3 frames (anchors).
+ * Run with: npm run bench:run -- --only=nb21-strict,flux3-premium,flux3-nbfix
+ */
+export const B05 = {
+  subjects: ["real-01", "real-02"],
+  anchors: ["nb21", "flux3"] as const,
+  variants: {
+    "nb21-strict": {
+      base: "nb21" as const,
+      label: "Nano Banana 2.1 · strict face",
+      /** Appended after the usual prompt + attribute line. */
+      suffix:
+        "Do not alter facial structure: keep the exact face shape, jawline, nose, eyes, eyebrows, lips and facial proportions from the reference photos. No beautification, no face slimming, no smoothing of skin texture. Keep the natural neutral expression unless the style says otherwise.",
+    },
+    "flux3-premium": {
+      base: "flux3" as const,
+      label: "FLUX 3 · premium shoot",
+      suffix:
+        "Professional studio portrait, soft key light with gentle rim light, natural skin retouching that keeps texture, relaxed confident posture with slight shoulder angle, subtle natural smile, shallow depth of field, shot on 85mm.",
+    },
+    "flux3-nbfix": {
+      base: "nb21" as const,
+      label: "FLUX 3 → Nano Banana 2.1 fix",
+      /** Two-step: input = the existing flux3 frame of the same subject / style / number (never regenerated). */
+      input: "flux3" as const,
+      /** Replaces the usual prompt. The last sentence tells the model which image is being edited. */
+      prompt:
+        "Improve only lighting, color grading, clothing fit and background quality to a premium professional headshot. The face must stay identical to the input image — same face shape, features, proportions and expression. The first image is the input image to edit; the other images are reference selfies of the same person.",
+    },
+  },
+};
+export type VariantKey = keyof typeof B05.variants;
+export const VARIANT_KEYS = Object.keys(B05.variants) as VariantKey[];
+
+/**
  * B0 forecast (bench:forecast): personas still to regenerate (unless already
  * redone with the current prompt) and the model assumed for the demo step.
  */
@@ -272,7 +314,7 @@ export const UPSCALE = {
 export const DEMO = {
   /**
    * The demo is NOT part of B0 (owner's decision, 18.10.2026): it is left out
-   * of bench:forecast and of the $17 ceiling and runs later, on request. Its
+   * of bench:forecast and of the B0 ceiling (SPEND_CEILING_USD) and runs later, on request. Its
    * own guard: the TOTAL spend (B0 + demo, with the margin) stays within the
    * fal.ai balance of $20. Its calls are recorded in spend.json as phase "demo".
    */
